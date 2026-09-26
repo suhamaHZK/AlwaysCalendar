@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="ic_launcher_background">#FF000000</color>
+    <color name="calendar_red">#FFE53935</color>
+    <color name="calendar_blue">#FF1E88E5</color>
+</resources>
