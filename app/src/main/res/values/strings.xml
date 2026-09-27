@@ -13,8 +13,8 @@
     <string name="week_start_sunday">日曜</string>
     <string name="week_start_monday">月曜</string>
     <string name="misoperation_lock">誤操作抑止モード</string>
-    <string name="exit_on_unplug">充電器を外した時に自動終了</string>
-    <string name="allow_auto_sleep">アプリ起動中の自動スリープ可否</string>
+    <string name="exit_on_unplug">充電器を外したら自動終了</string>
+    <string name="allow_auto_sleep">起動中の自動スリープ</string>
     <string name="discord_webhook">Discord Webhook URL</string>
     <string name="discord_test_send">Discordテスト送信</string>
     <string name="discord_test_msg">卓常カレンダーのテストメッセージ</string>
@@ -27,7 +27,7 @@
     <string name="discord_charge_msg">バッテリー %1$d%%（充電中）</string>
     <string name="threshold_off">OFF</string>
     <string name="holiday_fetch_failed">祝日データが取得できません</string>
-    <string name="credits_oss">ライセンス / OSS</string>
+    <string name="credits_oss">クレジット / オープンソース</string>
     <string name="credits_holidays_jp">祝日データ: holidays-jp (MIT) — https://holidays-jp.github.io/</string>
     <string name="back">戻る</string>
     <string name="on">オン</string>

@@ -3,7 +3,6 @@ package com.kmmm_engineering.alwayscalendar.ui
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -18,8 +17,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -29,6 +31,7 @@ import java.time.LocalDate
 import java.time.YearMonth
 import java.time.format.TextStyle
 import java.util.Locale
+import kotlin.math.roundToInt
 
 private val ColorSunday = Color(0xFFFF5555)
 private val ColorSaturday = Color(0xFF5599FF)
@@ -41,6 +44,10 @@ private val WeekdayLabelsMonStart = listOf("月", "火", "水", "木", "金", "�
 /**
  * Single-month calendar block: header (year / month# / English name), weekday row, date grid.
  * Only days of [yearMonth] are shown; out-of-month cells are blank.
+ *
+ * Always lays out with full proportional structure (grid aspect preserved).
+ * Overall size is controlled by the parent via [Modifier.uniformScale] — never by
+ * compressing row heights into a short slot.
  */
 @Composable
 fun MonthCalendar(
@@ -48,16 +55,15 @@ fun MonthCalendar(
     weekStart: WeekStart,
     today: LocalDate,
     isHoliday: (LocalDate) -> Boolean,
-    scale: Float,
     modifier: Modifier = Modifier,
 ) {
-    val yearSp = maxOf(11f * scale, 8f).sp
-    val monthNumSp = maxOf(28f * scale, 12f).sp
-    val monthNameSp = maxOf(13f * scale, 8f).sp
-    val weekdaySp = maxOf(11f * scale, 7f).sp
-    val daySp = maxOf(16f * scale, 9f).sp
-    val headerGap = (4f * scale).dp
-    val gridGap = (1f * scale).dp
+    val yearSp = 11.sp
+    val monthNumSp = 28.sp
+    val monthNameSp = 13.sp
+    val weekdaySp = 11.sp
+    val daySp = 16.sp
+    val headerGap = 4.dp
+    val gridGap = 1.dp
 
     val labels = if (weekStart == WeekStart.SUNDAY) WeekdayLabelsSunStart else WeekdayLabelsMonStart
     val englishMonth = remember(yearMonth) {
@@ -71,7 +77,6 @@ fun MonthCalendar(
         modifier = modifier.fillMaxWidth(),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        // Header: year | month number | English name
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
@@ -103,13 +108,11 @@ fun MonthCalendar(
         }
         Spacer(Modifier.height(headerGap))
 
-        // Weekday labels
         Row(modifier = Modifier.fillMaxWidth()) {
             labels.forEachIndexed { index, label ->
-                val color = weekdayLabelColor(index, weekStart)
                 Text(
                     text = label,
-                    color = color,
+                    color = weekdayLabelColor(index, weekStart),
                     fontSize = weekdaySp,
                     textAlign = TextAlign.Center,
                     modifier = Modifier.weight(1f),
@@ -118,7 +121,6 @@ fun MonthCalendar(
         }
         Spacer(Modifier.height(gridGap))
 
-        // Date grid (6 rows × 7 cols)
         Column(modifier = Modifier.fillMaxWidth()) {
             days.chunked(7).forEach { week ->
                 Row(modifier = Modifier.fillMaxWidth()) {
@@ -128,7 +130,6 @@ fun MonthCalendar(
                             today = today,
                             isHoliday = isHoliday,
                             daySp = daySp,
-                            scale = scale,
                             modifier = Modifier.weight(1f),
                         )
                     }
@@ -144,7 +145,6 @@ private fun DayCell(
     today: LocalDate,
     isHoliday: (LocalDate) -> Boolean,
     daySp: TextUnit,
-    scale: Float,
     modifier: Modifier = Modifier,
 ) {
     Box(
@@ -155,7 +155,6 @@ private fun DayCell(
         val holiday = isHoliday(date)
         val color = dayColor(date.dayOfWeek, holiday)
         val isToday = date == today
-        val borderPad = (2f * scale).dp.coerceAtLeast(1.dp)
         Text(
             text = date.dayOfMonth.toString(),
             color = color,
@@ -165,11 +164,11 @@ private fun DayCell(
             modifier = if (isToday) {
                 Modifier
                     .border(
-                        width = (1.5f * scale).dp.coerceAtLeast(1.dp),
+                        width = 1.5.dp,
                         color = ColorTodayBorder,
-                        shape = RoundedCornerShape((4f * scale).dp.coerceAtLeast(2.dp)),
+                        shape = RoundedCornerShape(4.dp),
                     )
-                    .padding(horizontal = borderPad, vertical = borderPad / 2)
+                    .padding(horizontal = 2.dp, vertical = 1.dp)
             } else {
                 Modifier
             },
@@ -211,18 +210,59 @@ private fun buildMonthCells(yearMonth: YearMonth, weekStart: WeekStart): List<Mo
     for (d in 1..length) {
         cells.add(MonthCell(yearMonth.atDay(d)))
     }
-    // Pad to full weeks (up to 6 rows)
     while (cells.size % 7 != 0) cells.add(MonthCell(null))
     while (cells.size < 42) cells.add(MonthCell(null))
     return cells
 }
 
-/** Prefer 4:3 when nearly square; 21:9 when very tall. Returns side-scale factor for side months. */
+/**
+ * Uniform visual scale that also shrinks layout bounds (packing uses visual size).
+ * Never applies non-uniform scaleY alone.
+ */
+fun Modifier.uniformScale(scale: Float): Modifier {
+    if (scale == 1f) return this
+    val s = scale.coerceAtLeast(0.01f)
+    return this.layout { measurable, constraints ->
+        val placeable = measurable.measure(constraints)
+        val w = (placeable.width * s).roundToInt().coerceAtLeast(0)
+        val h = (placeable.height * s).roundToInt().coerceAtLeast(0)
+        layout(w, h) {
+            placeable.placeWithLayer(0, 0) {
+                scaleX = s
+                scaleY = s
+                transformOrigin = TransformOrigin(0f, 0f)
+            }
+        }
+    }
+}
+
+/**
+ * Intrinsic height of [MonthCalendar] at [width] (scale=1 typography, 6×7 aspect grid).
+ * Used to pack center/side scales into the usable area without crushing rows.
+ */
+fun estimateMonthHeight(width: Dp): Dp {
+    val cellH = width / 7f / 1.15f
+    val grid = cellH * 6f
+    // Header (~28sp month numeral) + gaps + weekday row (~11sp)
+    val header = 48.dp
+    return header + grid
+}
+
+/** Side-month scale relative to center, before fit-to-usable. */
 fun sideMonthScale(aspectHeightOverWidth: Float): Float {
-    // aspect = h/w of usable area
     return when {
-        aspectHeightOverWidth <= 1.4f -> 0.42f // near 4:3 / square → side months a bit larger
-        aspectHeightOverWidth >= 2.1f -> 0.32f // 21:9-ish → smaller sides
-        else -> 0.36f
+        aspectHeightOverWidth <= 1.4f -> 0.48f
+        aspectHeightOverWidth >= 2.1f -> 0.36f
+        else -> 0.42f
+    }
+}
+
+/** Interpolate uniform scale by distance from focused month (0 = center). */
+fun monthScaleForDistance(distance: Float, centerScale: Float, sideScale: Float): Float {
+    val d = distance.coerceIn(0f, 1.5f)
+    return when {
+        d <= 0f -> centerScale
+        d < 1f -> centerScale + (sideScale - centerScale) * d
+        else -> sideScale * (1.5f - d).coerceIn(0.5f, 1f)
     }
 }

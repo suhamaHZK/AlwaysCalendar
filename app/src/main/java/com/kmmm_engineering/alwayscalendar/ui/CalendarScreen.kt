@@ -21,7 +21,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.displayCutout
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -288,20 +287,20 @@ fun CalendarScreen(
                 ),
         ) {
             val aspect = maxHeight / maxWidth
-            val sideScale = sideMonthScale(aspect)
-            // Packed weights: side + center + side fills usable height with no large voids
-            val sideWeight = sideScale
-            val centerWeight = 1f
-            val totalWeight = sideWeight * 2f + centerWeight
+            val sideRel = sideMonthScale(aspect)
+            // Fit center+sides into usable area; prefer shrinking center over crushing sides.
+            val (centerScale, sideScale) = if (isLandscape) {
+                fitMonthScalesLandscape(maxWidth, maxHeight, sideRel)
+            } else {
+                fitMonthScalesPortrait(maxWidth, maxHeight, sideRel)
+            }
 
             if (isLandscape) {
                 MonthStripLandscape(
                     centerMonth = centerMonth,
                     scroll = liveScroll,
+                    centerScale = centerScale,
                     sideScale = sideScale,
-                    sideWeight = sideWeight,
-                    centerWeight = centerWeight,
-                    totalWeight = totalWeight,
                     weekStart = settings.weekStart,
                     today = today,
                     isHoliday = isHoliday,
@@ -313,10 +312,8 @@ fun CalendarScreen(
                 MonthStripPortrait(
                     centerMonth = centerMonth,
                     scroll = liveScroll,
+                    centerScale = centerScale,
                     sideScale = sideScale,
-                    sideWeight = sideWeight,
-                    centerWeight = centerWeight,
-                    totalWeight = totalWeight,
                     weekStart = settings.weekStart,
                     today = today,
                     isHoliday = isHoliday,
@@ -359,16 +356,15 @@ fun CalendarScreen(
 
 /**
  * Portrait strip: prev / center / next packed into usable height.
+ * Each month is the same calendar structure, uniformly scaled (no row crush).
  * [scroll] in pages: +1 means next month is moving into center (content shifted up).
  */
 @Composable
 private fun MonthStripPortrait(
     centerMonth: YearMonth,
     scroll: Float,
+    centerScale: Float,
     sideScale: Float,
-    sideWeight: Float,
-    centerWeight: Float,
-    totalWeight: Float,
     weekStart: WeekStart,
     today: LocalDate,
     isHoliday: (LocalDate) -> Boolean,
@@ -378,14 +374,14 @@ private fun MonthStripPortrait(
 ) {
     val density = LocalDensity.current
     BoxWithConstraints(modifier = modifier) {
-        val totalH = maxHeight
-        val sideH = totalH * (sideWeight / totalWeight)
-        val centerH = totalH * (centerWeight / totalWeight)
+        val baseW = maxWidth * 0.92f
+        val baseH = estimateMonthHeight(baseW)
+        val sideH = baseH * sideScale
+        val centerH = baseH * centerScale
         // Travel distance for one month page ≈ distance between month slot centers
         val stepPx = with(density) { ((sideH + centerH) / 2f).toPx() }
         val scrollPx = -scroll * stepPx // +scroll (next) moves content up
 
-        // Draw neighboring months slightly outside for scroll-follow continuity
         val months = listOf(
             -2 to centerMonth.plusMonths(-2),
             -1 to centerMonth.plusMonths(-1),
@@ -405,24 +401,19 @@ private fun MonthStripPortrait(
                 }
                 val y = slotCenterY + with(density) { scrollPx.toDp() }
                 val dist = abs(index.toFloat() - scroll)
-                val scale = monthScaleForDistance(dist, sideScale)
-                val widthFrac = if (dist < 0.5f) {
-                    0.92f
-                } else {
-                    0.55f + (0.92f - 0.55f) * (1f - (dist - 0.5f).coerceIn(0f, 1f))
-                }
-                val slotH = if (dist < 0.5f) centerH else sideH
+                val scale = monthScaleForDistance(dist, centerScale, sideScale)
+                val visualH = baseH * scale
                 Box(
                     modifier = Modifier
                         .align(Alignment.TopCenter)
                         .offset {
                             IntOffset(
                                 0,
-                                with(density) { (y - slotH / 2f).toPx() }.roundToInt(),
+                                with(density) { (y - visualH / 2f).toPx() }.roundToInt(),
                             )
                         }
-                        .fillMaxWidth(widthFrac)
-                        .height(slotH)
+                        .width(baseW)
+                        .uniformScale(scale)
                         .graphicsLayer {
                             alpha = (1.25f - dist * 0.35f).coerceIn(0.35f, 1f)
                         }
@@ -442,7 +433,6 @@ private fun MonthStripPortrait(
                         weekStart = weekStart,
                         today = today,
                         isHoliday = isHoliday,
-                        scale = scale,
                         modifier = Modifier.fillMaxWidth(),
                     )
                 }
@@ -455,10 +445,8 @@ private fun MonthStripPortrait(
 private fun MonthStripLandscape(
     centerMonth: YearMonth,
     scroll: Float,
+    centerScale: Float,
     sideScale: Float,
-    sideWeight: Float,
-    centerWeight: Float,
-    totalWeight: Float,
     weekStart: WeekStart,
     today: LocalDate,
     isHoliday: (LocalDate) -> Boolean,
@@ -468,11 +456,16 @@ private fun MonthStripLandscape(
 ) {
     val density = LocalDensity.current
     BoxWithConstraints(modifier = modifier) {
-        val totalW = maxWidth
-        val sideW = totalW * (sideWeight / totalWeight)
-        val centerW = totalW * (centerWeight / totalWeight)
+        // Base calendar sized to fit height; width follows intrinsic aspect via estimate inverse.
+        val baseH = maxHeight * 0.92f
+        // Invert estimateMonthHeight: H ≈ 48.dp + W/7/1.15*6 → W ≈ (H - 48) * 7 * 1.15 / 6
+        val baseW = run {
+            val gridH = (baseH - 48.dp).coerceAtLeast(1.dp)
+            gridH * 7f * 1.15f / 6f
+        }.coerceAtMost(maxWidth * 0.42f)
+        val sideW = baseW * sideScale
+        val centerW = baseW * centerScale
         val stepPx = with(density) { ((sideW + centerW) / 2f).toPx() }
-        // +scroll (next) → content moves left
         val scrollPx = -scroll * stepPx
 
         val months = listOf(
@@ -494,20 +487,19 @@ private fun MonthStripLandscape(
                 }
                 val x = slotCenterX + with(density) { scrollPx.toDp() }
                 val dist = abs(index.toFloat() - scroll)
-                val scale = monthScaleForDistance(dist, sideScale)
-                val slotW = if (dist < 0.5f) centerW else sideW
-                val heightFrac = if (dist < 0.5f) 1f else 0.85f
+                val scale = monthScaleForDistance(dist, centerScale, sideScale)
+                val visualW = baseW * scale
                 Box(
                     modifier = Modifier
                         .align(Alignment.CenterStart)
                         .offset {
                             IntOffset(
-                                with(density) { (x - slotW / 2f).toPx() }.roundToInt(),
+                                with(density) { (x - visualW / 2f).toPx() }.roundToInt(),
                                 0,
                             )
                         }
-                        .width(slotW)
-                        .fillMaxHeight(heightFrac)
+                        .width(baseW)
+                        .uniformScale(scale)
                         .graphicsLayer {
                             alpha = (1.25f - dist * 0.35f).coerceIn(0.35f, 1f)
                         }
@@ -527,7 +519,6 @@ private fun MonthStripLandscape(
                         weekStart = weekStart,
                         today = today,
                         isHoliday = isHoliday,
-                        scale = scale,
                         modifier = Modifier.fillMaxWidth(),
                     )
                 }
@@ -536,22 +527,62 @@ private fun MonthStripLandscape(
     }
 }
 
-/** Interpolate typography scale by distance from focused month (0 = center). */
-private fun monthScaleForDistance(distance: Float, sideScale: Float): Float {
-    val d = distance.coerceIn(0f, 1.5f)
-    return when {
-        d <= 0.5f -> {
-            // 0 → 1.0, 0.5 → mid toward side
-            val t = d / 0.5f
-            1f + (sideScale - 1f) * t * 0.5f
-        }
-        d <= 1.0f -> {
-            val t = (d - 0.5f) / 0.5f
-            val mid = 1f + (sideScale - 1f) * 0.5f
-            mid + (sideScale - mid) * t
-        }
-        else -> sideScale * (1.5f - d).coerceIn(0.5f, 1f)
+/** Pack portrait scales so 2*side + center fit in [totalH]; prefer lowering center over crushing sides. */
+private fun fitMonthScalesPortrait(
+    totalW: androidx.compose.ui.unit.Dp,
+    totalH: androidx.compose.ui.unit.Dp,
+    sideRel: Float,
+): Pair<Float, Float> {
+    val baseW = totalW * 0.92f
+    val baseH = estimateMonthHeight(baseW)
+    var centerScale = 1f
+    var sideScale = sideRel
+    val needed = baseH * (sideScale * 2f + centerScale)
+    if (needed > totalH && needed.value > 0f) {
+        val fit = totalH / needed
+        centerScale *= fit
+        sideScale *= fit
     }
+    // Prefer readable sides: rebalance within the same weight sum if needed.
+    if (sideScale < 0.28f) {
+        val sum = sideScale * 2f + centerScale
+        val newSide = 0.28f
+        val newCenter = sum - 2f * newSide
+        if (newCenter >= 0.55f) {
+            sideScale = newSide
+            centerScale = newCenter
+        }
+    }
+    return centerScale to sideScale
+}
+
+/** Pack landscape scales so 2*side + center fit in [totalW]. */
+private fun fitMonthScalesLandscape(
+    totalW: androidx.compose.ui.unit.Dp,
+    totalH: androidx.compose.ui.unit.Dp,
+    sideRel: Float,
+): Pair<Float, Float> {
+    val baseH = totalH * 0.92f
+    val gridH = (baseH - 48.dp).coerceAtLeast(1.dp)
+    val baseW = (gridH * 7f * 1.15f / 6f).coerceAtMost(totalW * 0.42f)
+    var centerScale = 1f
+    var sideScale = sideRel
+    val needed = baseW * (sideScale * 2f + centerScale)
+    if (needed > totalW && needed.value > 0f) {
+        val fit = totalW / needed
+        centerScale *= fit
+        sideScale *= fit
+    }
+    if (sideScale < 0.28f) {
+        val sum = sideScale * 2f + centerScale
+        val newSide = 0.28f
+        val newCenter = sum - 2f * newSide
+        if (newCenter >= 0.55f) {
+            sideScale = newSide
+            centerScale = newCenter
+        }
+    }
+    return centerScale to sideScale
 }
 
 @Composable
