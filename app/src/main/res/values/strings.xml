@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">卓常カレンダー 祝日付き</string>
-    <string name="calendar_placeholder">卓常カレンダー\n（スケルトン）</string>
+    <string name="app_name">卓常カレンダー</string>
     <string name="double_tap_hint">ダブルタップで設定画面を表示</string>
+    <string name="slide_to_settings">スライドで設定 &gt;&gt;</string>
     <string name="settings_title">設定</string>
     <string name="idle_brightness">待機時の輝度</string>
     <string name="force_landscape">強制横表示</string>
@@ -16,9 +16,17 @@
     <string name="exit_on_unplug">充電器を外した時に自動終了</string>
     <string name="allow_auto_sleep">アプリ起動中の自動スリープ可否</string>
     <string name="discord_webhook">Discord Webhook URL</string>
-    <string name="discord_webhook_empty">未設定（入力UIは後続実装）</string>
-    <string name="discord_webhook_set">設定済み</string>
-    <string name="discord_thresholds_stub">放電: %1$s / 充電: %2$s</string>
+    <string name="discord_test_send">Discordテスト送信</string>
+    <string name="discord_test_msg">卓常カレンダーのテストメッセージ</string>
+    <string name="discord_test_empty">先にWebhook URLを入力してください</string>
+    <string name="discord_test_ok">テストメッセージを送信しました</string>
+    <string name="discord_test_fail">テストメッセージの送信に失敗しました</string>
+    <string name="discord_discharge">Discord通知（放電中に下記まで減少したら通知）</string>
+    <string name="discord_charge">Discord通知（充電中に下記まで回復したら通知）</string>
+    <string name="discord_discharge_msg">バッテリー %1$d%%（放電中）</string>
+    <string name="discord_charge_msg">バッテリー %1$d%%（充電中）</string>
+    <string name="threshold_off">OFF</string>
+    <string name="holiday_fetch_failed">祝日データが取得できません</string>
     <string name="credits_oss">ライセンス / OSS</string>
     <string name="credits_holidays_jp">祝日データ: holidays-jp (MIT) — https://holidays-jp.github.io/</string>
     <string name="back">戻る</string>
