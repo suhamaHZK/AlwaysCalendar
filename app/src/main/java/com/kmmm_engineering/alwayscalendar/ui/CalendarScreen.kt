@@ -80,6 +80,17 @@ import kotlin.random.Random
 private fun usableWindowInsets(): WindowInsets =
     WindowInsets.statusBarsIgnoringVisibility.union(WindowInsets.displayCutout)
 
+/**
+ * Status cluster sits in the top-left corner overlay; system status/cutout are already
+ * excluded via [usableWindowInsets]. Side months near-fill the remaining top/bottom
+ * bands (equal budgets around the centered month). A few-dp [MonthStripGap] keeps
+ * months from kissing; [SideFillFactor] replaces the old 0.96 overshrink.
+ */
+private val MonthStripGap = 3.dp
+
+/** Near-fill factor for side months (was 0.96 — left visible slack). */
+private const val SideFillFactor = 0.99f
+
 @Composable
 fun CalendarScreen(
     settings: UserSettings,
@@ -222,18 +233,6 @@ fun CalendarScreen(
                 )
             },
     ) {
-        // Status (top-left) — inside usable insets so punch-hole / status bar are avoided
-        StatusCluster(
-            timeText = wallTime,
-            batteryPercent = batteryPercent,
-            isCharging = isCharging,
-            networkStatus = networkStatus,
-            modifier = Modifier
-                .align(Alignment.TopStart)
-                .windowInsetsPadding(usableWindowInsets())
-                .padding(start = 12.dp, top = 6.dp),
-        )
-
         BoxWithConstraints(
             modifier = Modifier
                 .fillMaxSize()
@@ -322,6 +321,19 @@ fun CalendarScreen(
             }
         }
 
+        // Status (top-left) drawn above the month strip so near-filled prev month
+        // does not cover time / battery / signal.
+        StatusCluster(
+            timeText = wallTime,
+            batteryPercent = batteryPercent,
+            isCharging = isCharging,
+            networkStatus = networkStatus,
+            modifier = Modifier
+                .align(Alignment.TopStart)
+                .windowInsetsPadding(usableWindowInsets())
+                .padding(start = 12.dp, top = 6.dp),
+        )
+
         val showPersistentHint = !settings.firstRunHintSeen && !showSlider
         val showLostUserHint = !showSlider && lostUserHintUntil > System.currentTimeMillis()
         if (showPersistentHint || showLostUserHint) {
@@ -376,11 +388,13 @@ private fun MonthStripPortrait(
         val baseH = estimateMonthHeight(baseW)
         val sideH = baseH * sideScale
         val centerH = baseH * centerScale
-        val packH = sideH * 2f + centerH
+        val gap = MonthStripGap
+        // prev + gap + center + gap + next
+        val packH = sideH * 2f + centerH + gap * 2f
         // Center the 3-month pack in usable height (letterbox when design aspect < raw).
         val originY = (maxHeight - packH) / 2f
         // Travel distance for one month page ≈ distance between month slot centers
-        val stepPx = with(density) { ((sideH + centerH) / 2f).toPx() }
+        val stepPx = with(density) { ((sideH + gap + centerH) / 2f).toPx() }
         val scrollPx = -scroll * stepPx // +scroll (next) moves content up
 
         val months = listOf(
@@ -394,11 +408,11 @@ private fun MonthStripPortrait(
         Box(Modifier.fillMaxSize()) {
             months.forEach { (index, ym) ->
                 val slotCenterY = originY + when (index) {
-                    -2 -> -(sideH + centerH / 2f)
+                    -2 -> -(sideH + gap + centerH / 2f)
                     -1 -> sideH / 2f
-                    0 -> sideH + centerH / 2f
-                    1 -> sideH + centerH + sideH / 2f
-                    else -> sideH + centerH + sideH + centerH / 2f
+                    0 -> sideH + gap + centerH / 2f
+                    1 -> sideH + gap + centerH + gap + sideH / 2f
+                    else -> sideH + gap + centerH + gap + sideH + gap + centerH / 2f
                 }
                 val y = slotCenterY + with(density) { scrollPx.toDp() }
                 val dist = abs(index.toFloat() - scroll)
@@ -459,16 +473,17 @@ private fun MonthStripLandscape(
     BoxWithConstraints(modifier = modifier) {
         // Base = height-maximized intrinsic width; scales shrink uniformly into usable width.
         val baseH = maxHeight * 0.92f
-        // Invert estimateMonthHeight: H ≈ 48.dp + W/7/1.15*6 → W ≈ (H - 48) * 7 * 1.15 / 6
+        // Invert estimateMonthHeight: H ≈ 46.dp + W/7/1.15*6 → W ≈ (H - 46) * 7 * 1.15 / 6
         val baseW = run {
-            val gridH = (baseH - 48.dp).coerceAtLeast(1.dp)
+            val gridH = (baseH - 46.dp).coerceAtLeast(1.dp)
             gridH * 7f * 1.15f / 6f
         }
         val sideW = baseW * sideScale
         val centerW = baseW * centerScale
-        val packW = sideW * 2f + centerW
+        val gap = MonthStripGap
+        val packW = sideW * 2f + centerW + gap * 2f
         val originX = (maxWidth - packW) / 2f
-        val stepPx = with(density) { ((sideW + centerW) / 2f).toPx() }
+        val stepPx = with(density) { ((sideW + gap + centerW) / 2f).toPx() }
         val scrollPx = -scroll * stepPx
 
         val months = listOf(
@@ -482,11 +497,11 @@ private fun MonthStripLandscape(
         Box(Modifier.fillMaxSize()) {
             months.forEach { (index, ym) ->
                 val slotCenterX = originX + when (index) {
-                    -2 -> -(sideW + centerW / 2f)
+                    -2 -> -(sideW + gap + centerW / 2f)
                     -1 -> sideW / 2f
-                    0 -> sideW + centerW / 2f
-                    1 -> sideW + centerW + sideW / 2f
-                    else -> sideW + centerW + sideW + centerW / 2f
+                    0 -> sideW + gap + centerW / 2f
+                    1 -> sideW + gap + centerW + gap + sideW / 2f
+                    else -> sideW + gap + centerW + gap + sideW + gap + centerW / 2f
                 }
                 val x = slotCenterX + with(density) { scrollPx.toDp() }
                 val dist = abs(index.toFloat() - scroll)
@@ -531,8 +546,11 @@ private fun MonthStripLandscape(
 
 /**
  * Portrait: (1) maximize center month in the design-aspect usable rect,
- * (2) size prev/next uniformly from the leftover top/bottom margins.
- * Never shrinks center to enlarge sides.
+ * (2) size prev/next uniformly from the leftover top/bottom margins so each
+ * nearly fits that band (minus a few-dp gap). Never shrinks center to enlarge sides.
+ *
+ * Usable height already excludes status-bar / cutout insets; the status cluster is a
+ * corner overlay and does not further shrink the equal top/bottom budgets.
  */
 private fun fitMonthScalesPortrait(
     totalW: androidx.compose.ui.unit.Dp,
@@ -557,8 +575,9 @@ private fun fitMonthScalesPortrait(
     }
 
     val remainEach = ((layoutH - centerH) / 2f).coerceAtLeast(0.dp)
-    // Nearly fill each margin; slight inset so months don't kiss the cutout edge.
-    var sideScale = (remainEach / fullBaseH) * 0.96f
+    // Near-fit each margin; subtract inter-month gap only (no 0.96 overshrink).
+    val sideBudget = (remainEach - MonthStripGap).coerceAtLeast(0.dp)
+    var sideScale = (sideBudget / fullBaseH) * SideFillFactor
     sideScale = sideScale.coerceAtMost(centerScale).coerceAtLeast(0.01f)
     return centerScale to sideScale
 }
@@ -573,7 +592,7 @@ private fun fitMonthScalesLandscape(
     totalH: androidx.compose.ui.unit.Dp,
 ): Pair<Float, Float> {
     val baseH = totalH * 0.92f
-    val gridH = (baseH - 48.dp).coerceAtLeast(1.dp)
+    val gridH = (baseH - 46.dp).coerceAtLeast(1.dp)
     val fullBaseW = gridH * 7f * 1.15f / 6f
     if (fullBaseW.value <= 0f) return 1f to 0.35f
 
@@ -583,7 +602,8 @@ private fun fitMonthScalesLandscape(
     }
     val centerW = fullBaseW * centerScale
     val remainEach = ((totalW - centerW) / 2f).coerceAtLeast(0.dp)
-    var sideScale = (remainEach / fullBaseW) * 0.96f
+    val sideBudget = (remainEach - MonthStripGap).coerceAtLeast(0.dp)
+    var sideScale = (sideBudget / fullBaseW) * SideFillFactor
     sideScale = sideScale.coerceAtMost(centerScale).coerceAtLeast(0.01f)
     return centerScale to sideScale
 }

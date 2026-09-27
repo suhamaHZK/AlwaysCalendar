@@ -243,8 +243,9 @@ fun Modifier.uniformScale(scale: Float): Modifier {
 fun estimateMonthHeight(width: Dp): Dp {
     val cellH = width / 7f / 1.15f
     val grid = cellH * 6f
-    // Header (~28sp month numeral) + gaps + weekday row (~11sp)
-    val header = 48.dp
+    // Header: 28sp month numeral (~33dp) + 4dp gap + 11sp weekday (~13dp) + 1dp gap.
+    // Keep close to real Compose text metrics so side packing does not over-reserve.
+    val header = 46.dp
     return header + grid
 }
 
@@ -255,12 +256,20 @@ fun estimateMonthHeight(width: Dp): Dp {
 fun designAspectHeightOverWidth(rawHeightOverWidth: Float): Float =
     rawHeightOverWidth.coerceIn(4f / 3f, 21f / 9f)
 
-/** Interpolate uniform scale by distance from focused month (0 = center). */
+/**
+ * Interpolate uniform scale by distance from focused month (0 = center).
+ * At rest (distance == 1) scale must equal [sideScale] — packing allocates side
+ * slots with that height. Beyond 1 (peek of ±2 during fling) ease down to 50%.
+ */
 fun monthScaleForDistance(distance: Float, centerScale: Float, sideScale: Float): Float {
     val d = distance.coerceIn(0f, 1.5f)
     return when {
         d <= 0f -> centerScale
-        d < 1f -> centerScale + (sideScale - centerScale) * d
-        else -> sideScale * (1.5f - d).coerceIn(0.5f, 1f)
+        d <= 1f -> centerScale + (sideScale - centerScale) * d
+        else -> {
+            // d in (1, 1.5]: sideScale → sideScale * 0.5
+            val far = ((d - 1f) / 0.5f).coerceIn(0f, 1f)
+            sideScale * (1f - 0.5f * far)
+        }
     }
 }
