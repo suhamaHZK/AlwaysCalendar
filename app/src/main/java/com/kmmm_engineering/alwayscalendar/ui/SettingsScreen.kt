@@ -1,31 +1,34 @@
 package com.kmmm_engineering.alwayscalendar.ui
 
+import android.content.res.Configuration
 import android.widget.Toast
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material3.Button
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.MenuAnchorType
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
@@ -37,6 +40,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -59,26 +63,15 @@ fun SettingsScreen(
     modifier: Modifier = Modifier,
 ) {
     val scope = rememberCoroutineScope()
-    val scroll = rememberScrollState()
     val context = LocalContext.current
     var webhookDraft by remember(settings.discordWebhookUrl) {
         mutableStateOf(settings.discordWebhookUrl)
     }
+    var testSending by remember { mutableStateOf(false) }
     val testEmptyMsg = stringResource(R.string.discord_test_empty)
     val testOkMsg = stringResource(R.string.discord_test_ok)
     val testFailMsg = stringResource(R.string.discord_test_fail)
     val testContent = stringResource(R.string.discord_test_msg)
-    val fieldColors = OutlinedTextFieldDefaults.colors(
-        focusedTextColor = Color.White,
-        unfocusedTextColor = Color.White,
-        focusedBorderColor = Color.Gray,
-        unfocusedBorderColor = Color.DarkGray,
-        cursorColor = Color.White,
-        focusedLabelColor = Color.LightGray,
-        unfocusedLabelColor = Color.Gray,
-        focusedPlaceholderColor = Color.Gray,
-        unfocusedPlaceholderColor = Color.DarkGray,
-    )
 
     Scaffold(
         modifier = modifier.fillMaxSize(),
@@ -95,144 +88,148 @@ fun SettingsScreen(
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = Color.Black,
+                    containerColor = Color(0xFF121212),
                     titleContentColor = Color.White,
                     navigationIconContentColor = Color.White,
                 ),
             )
         },
     ) { padding ->
+        val isLandscape =
+            LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .verticalScroll(scroll)
-                .padding(horizontal = 16.dp, vertical = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+                .verticalScroll(rememberScrollState()),
+            horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            SectionTitle(stringResource(R.string.idle_brightness))
-            Text(
-                text = "${(settings.idleBrightness * 100).toInt()}%",
-                color = Color.White.copy(alpha = 0.8f),
-                style = MaterialTheme.typography.bodyMedium,
-            )
-            Slider(
-                value = settings.idleBrightness,
-                onValueChange = { v ->
-                    onIdleBrightnessPreview(v)
-                    scope.launch { repository.setIdleBrightness(v) }
-                },
-                onValueChangeFinished = { onIdleBrightnessPreview(null) },
-                valueRange = UserSettings.IDLE_BRIGHTNESS_MIN..UserSettings.IDLE_BRIGHTNESS_MAX,
-            )
-
-            SectionTitle(stringResource(R.string.force_landscape))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                LandscapeMode.entries.forEach { mode ->
-                    val label = when (mode) {
-                        LandscapeMode.OFF -> stringResource(R.string.landscape_off)
-                        LandscapeMode.RIGHT -> stringResource(R.string.landscape_right)
-                        LandscapeMode.LEFT -> stringResource(R.string.landscape_left)
-                    }
-                    TextButton(
-                        onClick = { scope.launch { repository.setLandscape(mode) } },
-                    ) {
-                        Text(
-                            text = label,
-                            color = if (settings.landscapeMode == mode) Color.White else Color.Gray,
-                        )
-                    }
-                }
-            }
-
-            SectionTitle(stringResource(R.string.week_start))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                WeekStart.entries.forEach { start ->
-                    val label = when (start) {
-                        WeekStart.SUNDAY -> stringResource(R.string.week_start_sunday)
-                        WeekStart.MONDAY -> stringResource(R.string.week_start_monday)
-                    }
-                    TextButton(
-                        onClick = { scope.launch { repository.setWeekStart(start) } },
-                    ) {
-                        Text(
-                            text = label,
-                            color = if (settings.weekStart == start) Color.White else Color.Gray,
-                        )
-                    }
-                }
-            }
-
-            ToggleRow(
-                label = stringResource(R.string.misoperation_lock),
-                checked = settings.misoperationLock,
-                onCheckedChange = { v -> scope.launch { repository.setMisoperationLock(v) } },
-            )
-            ToggleRow(
-                label = stringResource(R.string.exit_on_unplug),
-                checked = settings.exitOnUnplug,
-                onCheckedChange = { v -> scope.launch { repository.setExitOnUnplug(v) } },
-            )
-            ToggleRow(
-                label = stringResource(R.string.allow_auto_sleep),
-                checked = settings.allowAutoSleep,
-                onCheckedChange = { v -> scope.launch { repository.setAllowAutoSleep(v) } },
-            )
-
-            SectionTitle(stringResource(R.string.discord_webhook))
-            OutlinedTextField(
-                value = webhookDraft,
-                onValueChange = {
-                    webhookDraft = it
-                    scope.launch { repository.setDiscordWebhookUrl(it.trim()) }
-                },
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true,
-                placeholder = { Text("https://discord.com/api/webhooks/…") },
-                colors = fieldColors,
-            )
-            TextButton(
-                onClick = {
-                    val url = webhookDraft.trim().ifEmpty { settings.discordWebhookUrl.trim() }
-                    if (url.isEmpty()) {
-                        Toast.makeText(context, testEmptyMsg, Toast.LENGTH_SHORT).show()
-                        return@TextButton
-                    }
-                    scope.launch {
-                        val ok = DiscordNotifier.send(url, testContent)
-                        Toast.makeText(
-                            context,
-                            if (ok) testOkMsg else testFailMsg,
-                            Toast.LENGTH_SHORT,
-                        ).show()
-                    }
-                },
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth(if (isLandscape) 0.8f else 1f)
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                Text(stringResource(R.string.discord_test_send), color = Color.White)
-            }
+                SectionTitle(stringResource(R.string.idle_brightness))
+                Text(
+                    text = "%.0f%%".format(settings.idleBrightness * 100),
+                    color = Color(0xFFAAAAAA),
+                )
+                Slider(
+                    value = settings.idleBrightness,
+                    onValueChange = { v ->
+                        onIdleBrightnessPreview(v)
+                        scope.launch { repository.setIdleBrightness(v) }
+                    },
+                    onValueChangeFinished = { onIdleBrightnessPreview(null) },
+                    valueRange = UserSettings.IDLE_BRIGHTNESS_MIN..UserSettings.IDLE_BRIGHTNESS_MAX,
+                )
 
-            SectionTitle(stringResource(R.string.discord_discharge))
-            ThresholdDropdown(settings.discordDischargeThreshold) { v ->
-                scope.launch { repository.setDiscordDischarge(v) }
-            }
-            SectionTitle(stringResource(R.string.discord_charge))
-            ThresholdDropdown(settings.discordChargeThreshold) { v ->
-                scope.launch { repository.setDiscordCharge(v) }
-            }
+                SectionTitle(stringResource(R.string.force_landscape))
+                ChipRow {
+                    SettingChip(
+                        stringResource(R.string.landscape_off),
+                        settings.landscapeMode == LandscapeMode.OFF,
+                    ) { scope.launch { repository.setLandscape(LandscapeMode.OFF) } }
+                    SettingChip(
+                        stringResource(R.string.landscape_right),
+                        settings.landscapeMode == LandscapeMode.RIGHT,
+                    ) { scope.launch { repository.setLandscape(LandscapeMode.RIGHT) } }
+                    SettingChip(
+                        stringResource(R.string.landscape_left),
+                        settings.landscapeMode == LandscapeMode.LEFT,
+                    ) { scope.launch { repository.setLandscape(LandscapeMode.LEFT) } }
+                }
 
-            SectionTitle(stringResource(R.string.credits_oss))
-            Text(
-                text = stringResource(R.string.credits_holidays_jp),
-                color = Color.White.copy(alpha = 0.7f),
-                style = MaterialTheme.typography.bodySmall,
-            )
+                SectionTitle(stringResource(R.string.week_start))
+                ChipRow {
+                    SettingChip(
+                        stringResource(R.string.week_start_sunday),
+                        settings.weekStart == WeekStart.SUNDAY,
+                    ) { scope.launch { repository.setWeekStart(WeekStart.SUNDAY) } }
+                    SettingChip(
+                        stringResource(R.string.week_start_monday),
+                        settings.weekStart == WeekStart.MONDAY,
+                    ) { scope.launch { repository.setWeekStart(WeekStart.MONDAY) } }
+                }
 
-            Text(
-                text = versionFooter(),
-                color = Color.White.copy(alpha = 0.5f),
-                style = MaterialTheme.typography.bodySmall,
-                modifier = Modifier.padding(top = 8.dp, bottom = 24.dp),
-            )
+                SwitchRow(
+                    label = stringResource(R.string.misoperation_lock),
+                    checked = settings.misoperationLock,
+                    onCheckedChange = { v -> scope.launch { repository.setMisoperationLock(v) } },
+                )
+                SwitchRow(
+                    label = stringResource(R.string.exit_on_unplug),
+                    checked = settings.exitOnUnplug,
+                    onCheckedChange = { v -> scope.launch { repository.setExitOnUnplug(v) } },
+                )
+                SwitchRow(
+                    label = stringResource(R.string.allow_auto_sleep),
+                    checked = settings.allowAutoSleep,
+                    onCheckedChange = { v -> scope.launch { repository.setAllowAutoSleep(v) } },
+                )
+
+                SectionTitle(stringResource(R.string.discord_webhook))
+                OutlinedTextField(
+                    value = webhookDraft,
+                    onValueChange = {
+                        webhookDraft = it
+                        scope.launch { repository.setDiscordWebhookUrl(it.trim()) }
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    placeholder = { Text("https://discord.com/api/webhooks/…") },
+                    colors = ExposedDropdownMenuDefaults.outlinedTextFieldColors(),
+                )
+                Button(
+                    onClick = {
+                        val url = webhookDraft.trim().ifEmpty { settings.discordWebhookUrl.trim() }
+                        if (url.isEmpty()) {
+                            Toast.makeText(context, testEmptyMsg, Toast.LENGTH_SHORT).show()
+                            return@Button
+                        }
+                        if (testSending) return@Button
+                        testSending = true
+                        scope.launch {
+                            val ok = DiscordNotifier.send(url, testContent)
+                            Toast.makeText(
+                                context,
+                                if (ok) testOkMsg else testFailMsg,
+                                Toast.LENGTH_SHORT,
+                            ).show()
+                            testSending = false
+                        }
+                    },
+                    enabled = !testSending,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text(stringResource(R.string.discord_test_send))
+                }
+
+                SectionTitle(stringResource(R.string.discord_discharge))
+                ThresholdDropdown(settings.discordDischargeThreshold) { v ->
+                    scope.launch { repository.setDiscordDischarge(v) }
+                }
+                SectionTitle(stringResource(R.string.discord_charge))
+                ThresholdDropdown(settings.discordChargeThreshold) { v ->
+                    scope.launch { repository.setDiscordCharge(v) }
+                }
+
+                SectionTitle(stringResource(R.string.credits_oss))
+                Text(
+                    text = stringResource(R.string.credits_holidays_jp),
+                    color = Color(0xFFAAAAAA),
+                    style = MaterialTheme.typography.bodySmall,
+                )
+
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    text = versionFooter(),
+                    color = Color(0xFF888888),
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                Spacer(Modifier.height(32.dp))
+            }
         }
     }
 }
@@ -243,39 +240,48 @@ private fun ThresholdDropdown(
     value: Int,
     onSelect: (Int) -> Unit,
 ) {
-    var expanded by remember { mutableStateOf(false) }
     val offLabel = stringResource(R.string.threshold_off)
-    val options = listOf(-1) + (5..100 step 5).toList()
-    val label = if (value < 0) offLabel else "$value%"
+    val options = remember { listOf(-1) + (5..100 step 5).toList() }
+    val labelOf: (Int) -> String = { v -> if (v < 0) offLabel else "$v%" }
+    SimpleDropdown(
+        options = options.map { it to labelOf(it) },
+        selected = value,
+        labelOf = { labelOf(it) },
+        onSelect = onSelect,
+    )
+}
 
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun <T> SimpleDropdown(
+    options: List<Pair<T, String>>,
+    selected: T,
+    labelOf: (T) -> String,
+    onSelect: (T) -> Unit,
+) {
+    var expanded by remember { mutableStateOf(false) }
     ExposedDropdownMenuBox(
         expanded = expanded,
         onExpandedChange = { expanded = it },
+        modifier = Modifier.fillMaxWidth(),
     ) {
         OutlinedTextField(
-            value = label,
+            value = labelOf(selected),
             onValueChange = {},
             readOnly = true,
+            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
             modifier = Modifier
                 .menuAnchor(MenuAnchorType.PrimaryNotEditable)
                 .fillMaxWidth(),
-            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
-            colors = OutlinedTextFieldDefaults.colors(
-                focusedTextColor = Color.White,
-                unfocusedTextColor = Color.White,
-                focusedBorderColor = Color.Gray,
-                unfocusedBorderColor = Color.DarkGray,
-                disabledTextColor = Color.White,
-            ),
+            colors = ExposedDropdownMenuDefaults.outlinedTextFieldColors(),
         )
         ExposedDropdownMenu(
             expanded = expanded,
             onDismissRequest = { expanded = false },
         ) {
-            options.forEach { opt ->
-                val text = if (opt < 0) offLabel else "$opt%"
+            options.forEach { (opt, label) ->
                 DropdownMenuItem(
-                    text = { Text(text) },
+                    text = { Text(label) },
                     onClick = {
                         onSelect(opt)
                         expanded = false
@@ -290,24 +296,45 @@ private fun ThresholdDropdown(
 private fun SectionTitle(text: String) {
     Text(
         text = text,
-        color = Color.White,
-        style = MaterialTheme.typography.titleMedium,
+        style = MaterialTheme.typography.titleSmall,
+        color = Color(0xFFCCCCCC),
         modifier = Modifier.padding(top = 8.dp),
     )
 }
 
 @Composable
-private fun ToggleRow(
+private fun ChipRow(content: @Composable () -> Unit) {
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        content()
+    }
+}
+
+@Composable
+private fun SettingChip(label: String, selected: Boolean, onClick: () -> Unit) {
+    FilterChip(
+        selected = selected,
+        onClick = onClick,
+        label = { Text(label) },
+    )
+}
+
+@Composable
+private fun SwitchRow(
     label: String,
     checked: Boolean,
     onCheckedChange: (Boolean) -> Unit,
 ) {
     Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween,
     ) {
-        Text(text = label, color = Color.White, modifier = Modifier.weight(1f))
+        Text(label, color = Color.White, modifier = Modifier.weight(1f))
         Switch(checked = checked, onCheckedChange = onCheckedChange)
     }
 }

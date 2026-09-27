@@ -1,18 +1,26 @@
+@file:OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 package com.kmmm_engineering.alwayscalendar.ui
 
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.runtime.Composable
+
 import android.content.res.Configuration
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.displayCutout
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -20,15 +28,11 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.statusBarsIgnoringVisibility
+import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.width
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.SignalCellularAlt
-import androidx.compose.material.icons.filled.Wifi
-import androidx.compose.material.icons.filled.WifiOff
-import androidx.compose.material3.Icon
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -36,11 +40,18 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
@@ -53,12 +64,22 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.kmmm_engineering.alwayscalendar.R
 import com.kmmm_engineering.alwayscalendar.data.UserSettings
+import com.kmmm_engineering.alwayscalendar.data.WeekStart
 import com.kmmm_engineering.alwayscalendar.network.NetworkKind
 import com.kmmm_engineering.alwayscalendar.network.NetworkStatus
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
 import java.time.LocalDate
 import java.time.YearMonth
+import kotlin.math.abs
+import kotlin.math.roundToInt
 import kotlin.random.Random
+
+/** Usable-area insets: status bar (even when hidden) + display cutout / punch-hole. */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun usableWindowInsets(): WindowInsets =
+    WindowInsets.statusBarsIgnoringVisibility.union(WindowInsets.displayCutout)
 
 @Composable
 fun CalendarScreen(
@@ -88,8 +109,13 @@ fun CalendarScreen(
         val cal = java.util.Calendar.getInstance().apply { timeInMillis = nowMs }
         "%02d:%02d".format(cal.get(java.util.Calendar.HOUR_OF_DAY), cal.get(java.util.Calendar.MINUTE))
     }
+    val scope = rememberCoroutineScope()
 
-    // Align clock updates to next minute
+    // Finger-follow scroll offset in "pages" (-1..1 during gesture; 0 settled).
+    val scrollPage = remember { Animatable(0f) }
+    var dragPage by remember { mutableFloatStateOf(0f) }
+    val liveScroll = scrollPage.value + dragPage
+
     LaunchedEffect(Unit) {
         while (true) {
             nowMs = System.currentTimeMillis()
@@ -99,7 +125,6 @@ fun CalendarScreen(
         }
     }
 
-    // OLED pixel shift every ~3 minutes
     LaunchedEffect(Unit) {
         while (true) {
             delay(180_000L)
@@ -124,7 +149,6 @@ fun CalendarScreen(
         if (lostUserHintUntil == until) lostUserHintUntil = 0L
     }
 
-    // Fetch holidays when center month changes
     LaunchedEffect(centerMonth) {
         val ok = onEnsureMonth(centerMonth)
         if (!ok) onHolidayFetchFailed()
@@ -134,20 +158,51 @@ fun CalendarScreen(
         { d -> holidayDates.contains("%04d-%02d-%02d".format(d.year, d.monthValue, d.dayOfMonth)) }
     }
 
-    fun shiftMonth(delta: Long) {
-        if (settings.misoperationLock) return
-        centerMonth = centerMonth.plusMonths(delta)
+    fun commitScrollToNearest() {
+        scope.launch {
+            val current = scrollPage.value + dragPage
+            val nearest = current.roundToInt().coerceIn(-1, 1)
+            // Snap: animate remaining drag into Animatable, then apply month delta.
+            scrollPage.snapTo(current)
+            dragPage = 0f
+            scrollPage.animateTo(
+                nearest.toFloat(),
+                animationSpec = spring(
+                    dampingRatio = Spring.DampingRatioNoBouncy,
+                    stiffness = Spring.StiffnessMediumLow,
+                ),
+            )
+            if (nearest != 0) {
+                centerMonth = centerMonth.plusMonths(nearest.toLong())
+                scrollPage.snapTo(0f)
+            }
+        }
     }
 
-    val dragAccum = remember { mutableFloatStateOf(0f) }
-    val density = LocalDensity.current
-    val swipeThresholdPx = with(density) { 64.dp.toPx() }
+    fun animateToMonthDelta(delta: Long) {
+        if (settings.misoperationLock) return
+        if (delta == 0L) return
+        scope.launch {
+            dragPage = 0f
+            scrollPage.snapTo(0f)
+            val target = delta.toFloat().coerceIn(-1f, 1f)
+            scrollPage.animateTo(
+                target,
+                animationSpec = spring(
+                    dampingRatio = Spring.DampingRatioNoBouncy,
+                    stiffness = Spring.StiffnessMediumLow,
+                ),
+            )
+            centerMonth = centerMonth.plusMonths(delta)
+            scrollPage.snapTo(0f)
+        }
+    }
 
     Box(
         modifier = modifier
             .fillMaxSize()
             .background(Color.Black)
-            .pointerInput(settings.misoperationLock, isLandscape) {
+            .pointerInput(settings.misoperationLock) {
                 detectTapGestures(
                     onTap = {
                         if (showSlider) {
@@ -166,51 +221,9 @@ fun CalendarScreen(
                     },
                     onDoubleTap = { showSlider = true },
                 )
-            }
-            .then(
-                if (settings.misoperationLock) {
-                    Modifier
-                } else if (isLandscape) {
-                    Modifier.pointerInput(centerMonth) {
-                        detectHorizontalDragGestures(
-                            onDragEnd = {
-                                val a = dragAccum.floatValue
-                                dragAccum.floatValue = 0f
-                                when {
-                                    a <= -swipeThresholdPx -> shiftMonth(1)
-                                    a >= swipeThresholdPx -> shiftMonth(-1)
-                                }
-                            },
-                            onDragCancel = { dragAccum.floatValue = 0f },
-                            onHorizontalDrag = { change, amount ->
-                                change.consume()
-                                dragAccum.floatValue += amount
-                            },
-                        )
-                    }
-                } else {
-                    Modifier.pointerInput(centerMonth) {
-                        detectVerticalDragGestures(
-                            onDragEnd = {
-                                val a = dragAccum.floatValue
-                                dragAccum.floatValue = 0f
-                                when {
-                                    // swipe up → next month; swipe down → previous
-                                    a <= -swipeThresholdPx -> shiftMonth(1)
-                                    a >= swipeThresholdPx -> shiftMonth(-1)
-                                }
-                            },
-                            onDragCancel = { dragAccum.floatValue = 0f },
-                            onVerticalDrag = { change, amount ->
-                                change.consume()
-                                dragAccum.floatValue += amount
-                            },
-                        )
-                    }
-                },
-            ),
+            },
     ) {
-        // Status (top-left), outside OLED shift so it stays readable near notch
+        // Status (top-left) — inside usable insets so punch-hole / status bar are avoided
         StatusCluster(
             timeText = wallTime,
             batteryPercent = batteryPercent,
@@ -218,108 +231,99 @@ fun CalendarScreen(
             networkStatus = networkStatus,
             modifier = Modifier
                 .align(Alignment.TopStart)
-                .statusBarsPadding()
-                .padding(start = 12.dp, top = 8.dp),
+                .windowInsetsPadding(usableWindowInsets())
+                .padding(start = 12.dp, top = 6.dp),
         )
 
         BoxWithConstraints(
             modifier = Modifier
                 .fillMaxSize()
-                .statusBarsPadding()
+                .windowInsetsPadding(usableWindowInsets())
                 .offset { IntOffset(shiftX, shiftY) }
-                .padding(horizontal = 12.dp, vertical = 8.dp),
+                .padding(horizontal = 12.dp, vertical = 6.dp)
+                .then(
+                    if (settings.misoperationLock) {
+                        Modifier
+                    } else if (isLandscape) {
+                        Modifier.pointerInput(centerMonth) {
+                            val step = size.width * 0.42f
+                            detectHorizontalDragGestures(
+                                onDragStart = {
+                                    // Cancel in-flight snap by folding into drag
+                                    dragPage += scrollPage.value
+                                    scope.launch { scrollPage.snapTo(0f) }
+                                },
+                                onDragEnd = { commitScrollToNearest() },
+                                onDragCancel = { commitScrollToNearest() },
+                                onHorizontalDrag = { change, amount ->
+                                    change.consume()
+                                    // amount>0 = finger right → content right → previous month (+scroll means next)
+                                    // so invert: drag right decreases scroll page
+                                    dragPage += -amount / step
+                                    dragPage = dragPage.coerceIn(-1.25f, 1.25f)
+                                },
+                            )
+                        }
+                    } else {
+                        Modifier.pointerInput(centerMonth) {
+                            val step = size.height * 0.38f
+                            detectVerticalDragGestures(
+                                onDragStart = {
+                                    dragPage += scrollPage.value
+                                    scope.launch { scrollPage.snapTo(0f) }
+                                },
+                                onDragEnd = { commitScrollToNearest() },
+                                onDragCancel = { commitScrollToNearest() },
+                                onVerticalDrag = { change, amount ->
+                                    change.consume()
+                                    // Finger down → previous month (content follows down)
+                                    dragPage += -amount / step
+                                    // Convention: positive liveScroll → next month toward center
+                                    // swipe up (amount < 0) → next; so dragPage += -amount/step
+                                    dragPage = dragPage.coerceIn(-1.25f, 1.25f)
+                                },
+                            )
+                        }
+                    },
+                ),
         ) {
             val aspect = maxHeight / maxWidth
             val sideScale = sideMonthScale(aspect)
-            val prev = centerMonth.plusMonths(-1)
-            val next = centerMonth.plusMonths(1)
+            // Packed weights: side + center + side fills usable height with no large voids
+            val sideWeight = sideScale
+            val centerWeight = 1f
+            val totalWeight = sideWeight * 2f + centerWeight
 
             if (isLandscape) {
-                Row(
+                MonthStripLandscape(
+                    centerMonth = centerMonth,
+                    scroll = liveScroll,
+                    sideScale = sideScale,
+                    sideWeight = sideWeight,
+                    centerWeight = centerWeight,
+                    totalWeight = totalWeight,
+                    weekStart = settings.weekStart,
+                    today = today,
+                    isHoliday = isHoliday,
+                    misoperationLock = settings.misoperationLock,
+                    onSelectDelta = { animateToMonthDelta(it) },
                     modifier = Modifier.fillMaxSize(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    SideMonth(
-                        yearMonth = prev,
-                        weekStart = settings.weekStart,
-                        today = today,
-                        isHoliday = isHoliday,
-                        scale = sideScale,
-                        enabled = !settings.misoperationLock,
-                        onClick = { shiftMonth(-1) },
-                        modifier = Modifier
-                            .weight(0.28f)
-                            .fillMaxHeight(0.85f),
-                    )
-                    MonthCalendar(
-                        yearMonth = centerMonth,
-                        weekStart = settings.weekStart,
-                        today = today,
-                        isHoliday = isHoliday,
-                        scale = 1f,
-                        modifier = Modifier
-                            .weight(0.44f)
-                            .fillMaxHeight(),
-                    )
-                    SideMonth(
-                        yearMonth = next,
-                        weekStart = settings.weekStart,
-                        today = today,
-                        isHoliday = isHoliday,
-                        scale = sideScale,
-                        enabled = !settings.misoperationLock,
-                        onClick = { shiftMonth(1) },
-                        modifier = Modifier
-                            .weight(0.28f)
-                            .fillMaxHeight(0.85f),
-                    )
-                }
+                )
             } else {
-                // Portrait: prev (small) / center (large) / next (small)
-                val sideWeight = sideScale
-                val centerWeight = 1f
-                val total = sideWeight * 2f + centerWeight
-                Column(
+                MonthStripPortrait(
+                    centerMonth = centerMonth,
+                    scroll = liveScroll,
+                    sideScale = sideScale,
+                    sideWeight = sideWeight,
+                    centerWeight = centerWeight,
+                    totalWeight = totalWeight,
+                    weekStart = settings.weekStart,
+                    today = today,
+                    isHoliday = isHoliday,
+                    misoperationLock = settings.misoperationLock,
+                    onSelectDelta = { animateToMonthDelta(it) },
                     modifier = Modifier.fillMaxSize(),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.SpaceEvenly,
-                ) {
-                    SideMonth(
-                        yearMonth = prev,
-                        weekStart = settings.weekStart,
-                        today = today,
-                        isHoliday = isHoliday,
-                        scale = sideScale,
-                        enabled = !settings.misoperationLock,
-                        onClick = { shiftMonth(-1) },
-                        modifier = Modifier
-                            .fillMaxWidth(0.55f)
-                            .weight(sideWeight / total),
-                    )
-                    MonthCalendar(
-                        yearMonth = centerMonth,
-                        weekStart = settings.weekStart,
-                        today = today,
-                        isHoliday = isHoliday,
-                        scale = 1f,
-                        modifier = Modifier
-                            .fillMaxWidth(0.92f)
-                            .weight(centerWeight / total),
-                    )
-                    SideMonth(
-                        yearMonth = next,
-                        weekStart = settings.weekStart,
-                        today = today,
-                        isHoliday = isHoliday,
-                        scale = sideScale,
-                        enabled = !settings.misoperationLock,
-                        onClick = { shiftMonth(1) },
-                        modifier = Modifier
-                            .fillMaxWidth(0.55f)
-                            .weight(sideWeight / total),
-                    )
-                }
+                )
             }
         }
 
@@ -332,6 +336,7 @@ fun CalendarScreen(
                 fontSize = 14.sp,
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
+                    .windowInsetsPadding(usableWindowInsets())
                     .padding(bottom = 48.dp),
             )
         }
@@ -344,6 +349,7 @@ fun CalendarScreen(
                 },
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
+                    .windowInsetsPadding(usableWindowInsets())
                     .padding(horizontal = 32.dp, vertical = 40.dp)
                     .fillMaxWidth(if (isLandscape) 0.5f else 1f),
             )
@@ -351,32 +357,200 @@ fun CalendarScreen(
     }
 }
 
+/**
+ * Portrait strip: prev / center / next packed into usable height.
+ * [scroll] in pages: +1 means next month is moving into center (content shifted up).
+ */
 @Composable
-private fun SideMonth(
-    yearMonth: YearMonth,
-    weekStart: com.kmmm_engineering.alwayscalendar.data.WeekStart,
+private fun MonthStripPortrait(
+    centerMonth: YearMonth,
+    scroll: Float,
+    sideScale: Float,
+    sideWeight: Float,
+    centerWeight: Float,
+    totalWeight: Float,
+    weekStart: WeekStart,
     today: LocalDate,
     isHoliday: (LocalDate) -> Boolean,
-    scale: Float,
-    enabled: Boolean,
-    onClick: () -> Unit,
+    misoperationLock: Boolean,
+    onSelectDelta: (Long) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Box(
-        modifier = modifier
-            .then(
-                if (enabled) Modifier.clickable(onClick = onClick) else Modifier,
-            ),
-        contentAlignment = Alignment.Center,
-    ) {
-        MonthCalendar(
-            yearMonth = yearMonth,
-            weekStart = weekStart,
-            today = today,
-            isHoliday = isHoliday,
-            scale = scale,
-            modifier = Modifier.fillMaxWidth(),
+    val density = LocalDensity.current
+    BoxWithConstraints(modifier = modifier) {
+        val totalH = maxHeight
+        val sideH = totalH * (sideWeight / totalWeight)
+        val centerH = totalH * (centerWeight / totalWeight)
+        // Travel distance for one month page ≈ distance between month slot centers
+        val stepPx = with(density) { ((sideH + centerH) / 2f).toPx() }
+        val scrollPx = -scroll * stepPx // +scroll (next) moves content up
+
+        // Draw neighboring months slightly outside for scroll-follow continuity
+        val months = listOf(
+            -2 to centerMonth.plusMonths(-2),
+            -1 to centerMonth.plusMonths(-1),
+            0 to centerMonth,
+            1 to centerMonth.plusMonths(1),
+            2 to centerMonth.plusMonths(2),
         )
+
+        Box(Modifier.fillMaxSize()) {
+            months.forEach { (index, ym) ->
+                val slotCenterY = when (index) {
+                    -2 -> -(sideH + centerH / 2f)
+                    -1 -> sideH / 2f
+                    0 -> sideH + centerH / 2f
+                    1 -> sideH + centerH + sideH / 2f
+                    else -> sideH + centerH + sideH + centerH / 2f
+                }
+                val y = slotCenterY + with(density) { scrollPx.toDp() }
+                val dist = abs(index.toFloat() - scroll)
+                val scale = monthScaleForDistance(dist, sideScale)
+                val widthFrac = if (dist < 0.5f) {
+                    0.92f
+                } else {
+                    0.55f + (0.92f - 0.55f) * (1f - (dist - 0.5f).coerceIn(0f, 1f))
+                }
+                val slotH = if (dist < 0.5f) centerH else sideH
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .offset {
+                            IntOffset(
+                                0,
+                                with(density) { (y - slotH / 2f).toPx() }.roundToInt(),
+                            )
+                        }
+                        .fillMaxWidth(widthFrac)
+                        .height(slotH)
+                        .graphicsLayer {
+                            alpha = (1.25f - dist * 0.35f).coerceIn(0.35f, 1f)
+                        }
+                        .then(
+                            if (!misoperationLock && index == -1) {
+                                Modifier.clickable { onSelectDelta(-1) }
+                            } else if (!misoperationLock && index == 1) {
+                                Modifier.clickable { onSelectDelta(1) }
+                            } else {
+                                Modifier
+                            },
+                        ),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    MonthCalendar(
+                        yearMonth = ym,
+                        weekStart = weekStart,
+                        today = today,
+                        isHoliday = isHoliday,
+                        scale = scale,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun MonthStripLandscape(
+    centerMonth: YearMonth,
+    scroll: Float,
+    sideScale: Float,
+    sideWeight: Float,
+    centerWeight: Float,
+    totalWeight: Float,
+    weekStart: WeekStart,
+    today: LocalDate,
+    isHoliday: (LocalDate) -> Boolean,
+    misoperationLock: Boolean,
+    onSelectDelta: (Long) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val density = LocalDensity.current
+    BoxWithConstraints(modifier = modifier) {
+        val totalW = maxWidth
+        val sideW = totalW * (sideWeight / totalWeight)
+        val centerW = totalW * (centerWeight / totalWeight)
+        val stepPx = with(density) { ((sideW + centerW) / 2f).toPx() }
+        // +scroll (next) → content moves left
+        val scrollPx = -scroll * stepPx
+
+        val months = listOf(
+            -2 to centerMonth.plusMonths(-2),
+            -1 to centerMonth.plusMonths(-1),
+            0 to centerMonth,
+            1 to centerMonth.plusMonths(1),
+            2 to centerMonth.plusMonths(2),
+        )
+
+        Box(Modifier.fillMaxSize()) {
+            months.forEach { (index, ym) ->
+                val slotCenterX = when (index) {
+                    -2 -> -(sideW + centerW / 2f)
+                    -1 -> sideW / 2f
+                    0 -> sideW + centerW / 2f
+                    1 -> sideW + centerW + sideW / 2f
+                    else -> sideW + centerW + sideW + centerW / 2f
+                }
+                val x = slotCenterX + with(density) { scrollPx.toDp() }
+                val dist = abs(index.toFloat() - scroll)
+                val scale = monthScaleForDistance(dist, sideScale)
+                val slotW = if (dist < 0.5f) centerW else sideW
+                val heightFrac = if (dist < 0.5f) 1f else 0.85f
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.CenterStart)
+                        .offset {
+                            IntOffset(
+                                with(density) { (x - slotW / 2f).toPx() }.roundToInt(),
+                                0,
+                            )
+                        }
+                        .width(slotW)
+                        .fillMaxHeight(heightFrac)
+                        .graphicsLayer {
+                            alpha = (1.25f - dist * 0.35f).coerceIn(0.35f, 1f)
+                        }
+                        .then(
+                            if (!misoperationLock && index == -1) {
+                                Modifier.clickable { onSelectDelta(-1) }
+                            } else if (!misoperationLock && index == 1) {
+                                Modifier.clickable { onSelectDelta(1) }
+                            } else {
+                                Modifier
+                            },
+                        ),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    MonthCalendar(
+                        yearMonth = ym,
+                        weekStart = weekStart,
+                        today = today,
+                        isHoliday = isHoliday,
+                        scale = scale,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+            }
+        }
+    }
+}
+
+/** Interpolate typography scale by distance from focused month (0 = center). */
+private fun monthScaleForDistance(distance: Float, sideScale: Float): Float {
+    val d = distance.coerceIn(0f, 1.5f)
+    return when {
+        d <= 0.5f -> {
+            // 0 → 1.0, 0.5 → mid toward side
+            val t = d / 0.5f
+            1f + (sideScale - 1f) * t * 0.5f
+        }
+        d <= 1.0f -> {
+            val t = (d - 0.5f) / 0.5f
+            val mid = 1f + (sideScale - 1f) * 0.5f
+            mid + (sideScale - mid) * t
+        }
+        else -> sideScale * (1.5f - d).coerceIn(0.5f, 1f)
     }
 }
 
@@ -412,26 +586,118 @@ private fun StatusCluster(
             )
         }
         Spacer(Modifier.height(2.dp))
-        when (networkStatus.kind) {
-            NetworkKind.WIFI -> Icon(
-                imageVector = Icons.Filled.Wifi,
-                contentDescription = "Wi-Fi",
-                tint = Color.White,
-                modifier = Modifier.size(16.dp),
-            )
-            NetworkKind.CELLULAR -> Icon(
-                imageVector = Icons.Filled.SignalCellularAlt,
-                contentDescription = "Mobile",
-                tint = Color.White,
-                modifier = Modifier.size(16.dp),
-            )
-            NetworkKind.NONE -> Icon(
-                imageVector = Icons.Filled.WifiOff,
-                contentDescription = "Offline",
-                tint = Color.White.copy(alpha = 0.5f),
-                modifier = Modifier.size(16.dp),
+        NetworkSignalIcon(networkStatus)
+    }
+}
+
+@Composable
+private fun NetworkSignalIcon(status: NetworkStatus) {
+    val level = status.level.coerceIn(0, 3)
+    when (status.kind) {
+        NetworkKind.WIFI -> WifiLevelIcon(
+            level = level,
+            color = Color.White,
+            modifier = Modifier
+                .size(16.dp)
+                .semantics { contentDescription = "Wi-Fi level $level" },
+        )
+        NetworkKind.CELLULAR -> CellularLevelIcon(
+            level = level,
+            color = Color.White,
+            modifier = Modifier
+                .size(16.dp)
+                .semantics { contentDescription = "Mobile level $level" },
+        )
+        NetworkKind.NONE -> WifiOffIcon(
+            color = Color.White.copy(alpha = 0.5f),
+            modifier = Modifier
+                .size(16.dp)
+                .semantics { contentDescription = "Offline" },
+        )
+    }
+}
+
+/** 4-stage Wi-Fi arcs (level 0..3). */
+@Composable
+private fun WifiLevelIcon(level: Int, color: Color, modifier: Modifier = Modifier) {
+    Canvas(modifier = modifier) {
+        val w = size.width
+        val h = size.height
+        val cx = w * 0.5f
+        val cy = h * 0.78f
+        val stroke = Stroke(width = w * 0.12f, cap = StrokeCap.Round)
+        // Dot (always on when connected)
+        drawCircle(color, radius = w * 0.08f, center = Offset(cx, cy))
+        // 3 arcs → with dot = 4 stages; light arcs up to level
+        val radii = listOf(w * 0.28f, w * 0.48f, w * 0.68f)
+        radii.forEachIndexed { i, r ->
+            val on = level >= (i + 1)
+            val c = if (on) color else color.copy(alpha = 0.22f)
+            drawArc(
+                color = c,
+                startAngle = 220f,
+                sweepAngle = 100f,
+                useCenter = false,
+                topLeft = Offset(cx - r, cy - r),
+                size = Size(r * 2f, r * 2f),
+                style = stroke,
             )
         }
+    }
+}
+
+/** 4-stage cellular bars (level 0..3). */
+@Composable
+private fun CellularLevelIcon(level: Int, color: Color, modifier: Modifier = Modifier) {
+    Canvas(modifier = modifier) {
+        val w = size.width
+        val h = size.height
+        val barW = w * 0.16f
+        val gap = w * 0.08f
+        val heights = listOf(0.35f, 0.55f, 0.75f, 0.95f)
+        val totalBarsW = barW * 4f + gap * 3f
+        val startX = (w - totalBarsW) / 2f
+        heights.forEachIndexed { i, frac ->
+            val on = level >= i
+            val c = if (on) color else color.copy(alpha = 0.22f)
+            val bh = h * frac
+            drawRoundRect(
+                color = c,
+                topLeft = Offset(startX + i * (barW + gap), h - bh),
+                size = Size(barW, bh),
+                cornerRadius = CornerRadius(barW * 0.25f, barW * 0.25f),
+            )
+        }
+    }
+}
+
+@Composable
+private fun WifiOffIcon(color: Color, modifier: Modifier = Modifier) {
+    Canvas(modifier = modifier) {
+        val w = size.width
+        val h = size.height
+        val cx = w * 0.5f
+        val cy = h * 0.78f
+        val stroke = Stroke(width = w * 0.12f, cap = StrokeCap.Round)
+        drawCircle(color, radius = w * 0.08f, center = Offset(cx, cy))
+        val r = w * 0.48f
+        drawArc(
+            color = color,
+            startAngle = 220f,
+            sweepAngle = 100f,
+            useCenter = false,
+            topLeft = Offset(cx - r, cy - r),
+            size = Size(r * 2f, r * 2f),
+            style = stroke,
+        )
+        // Slash
+        drawLine(
+            color = color,
+            start = Offset(w * 0.2f, h * 0.15f),
+            end = Offset(w * 0.8f, h * 0.85f),
+            strokeWidth = w * 0.12f,
+            cap = StrokeCap.Round,
+        )
     }
 }
 
