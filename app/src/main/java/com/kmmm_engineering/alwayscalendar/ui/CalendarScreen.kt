@@ -286,13 +286,11 @@ fun CalendarScreen(
                     },
                 ),
         ) {
-            val aspect = maxHeight / maxWidth
-            val sideRel = sideMonthScale(aspect)
-            // Fit center+sides into usable area; prefer shrinking center over crushing sides.
+            // Center-first: maximize current month, then size prev/next from remaining margins.
             val (centerScale, sideScale) = if (isLandscape) {
-                fitMonthScalesLandscape(maxWidth, maxHeight, sideRel)
+                fitMonthScalesLandscape(maxWidth, maxHeight)
             } else {
-                fitMonthScalesPortrait(maxWidth, maxHeight, sideRel)
+                fitMonthScalesPortrait(maxWidth, maxHeight)
             }
 
             if (isLandscape) {
@@ -355,7 +353,7 @@ fun CalendarScreen(
 }
 
 /**
- * Portrait strip: prev / center / next packed into usable height.
+ * Portrait strip: prev / center / next; center maximized, sides fill leftover margins.
  * Each month is the same calendar structure, uniformly scaled (no row crush).
  * [scroll] in pages: +1 means next month is moving into center (content shifted up).
  */
@@ -378,6 +376,9 @@ private fun MonthStripPortrait(
         val baseH = estimateMonthHeight(baseW)
         val sideH = baseH * sideScale
         val centerH = baseH * centerScale
+        val packH = sideH * 2f + centerH
+        // Center the 3-month pack in usable height (letterbox when design aspect < raw).
+        val originY = (maxHeight - packH) / 2f
         // Travel distance for one month page ≈ distance between month slot centers
         val stepPx = with(density) { ((sideH + centerH) / 2f).toPx() }
         val scrollPx = -scroll * stepPx // +scroll (next) moves content up
@@ -392,7 +393,7 @@ private fun MonthStripPortrait(
 
         Box(Modifier.fillMaxSize()) {
             months.forEach { (index, ym) ->
-                val slotCenterY = when (index) {
+                val slotCenterY = originY + when (index) {
                     -2 -> -(sideH + centerH / 2f)
                     -1 -> sideH / 2f
                     0 -> sideH + centerH / 2f
@@ -456,15 +457,17 @@ private fun MonthStripLandscape(
 ) {
     val density = LocalDensity.current
     BoxWithConstraints(modifier = modifier) {
-        // Base calendar sized to fit height; width follows intrinsic aspect via estimate inverse.
+        // Base = height-maximized intrinsic width; scales shrink uniformly into usable width.
         val baseH = maxHeight * 0.92f
         // Invert estimateMonthHeight: H ≈ 48.dp + W/7/1.15*6 → W ≈ (H - 48) * 7 * 1.15 / 6
         val baseW = run {
             val gridH = (baseH - 48.dp).coerceAtLeast(1.dp)
             gridH * 7f * 1.15f / 6f
-        }.coerceAtMost(maxWidth * 0.42f)
+        }
         val sideW = baseW * sideScale
         val centerW = baseW * centerScale
+        val packW = sideW * 2f + centerW
+        val originX = (maxWidth - packW) / 2f
         val stepPx = with(density) { ((sideW + centerW) / 2f).toPx() }
         val scrollPx = -scroll * stepPx
 
@@ -478,7 +481,7 @@ private fun MonthStripLandscape(
 
         Box(Modifier.fillMaxSize()) {
             months.forEach { (index, ym) ->
-                val slotCenterX = when (index) {
+                val slotCenterX = originX + when (index) {
                     -2 -> -(sideW + centerW / 2f)
                     -1 -> sideW / 2f
                     0 -> sideW + centerW / 2f
@@ -526,61 +529,62 @@ private fun MonthStripLandscape(
     }
 }
 
-/** Pack portrait scales so 2*side + center fit in [totalH]; prefer lowering center over crushing sides. */
+/**
+ * Portrait: (1) maximize center month in the design-aspect usable rect,
+ * (2) size prev/next uniformly from the leftover top/bottom margins.
+ * Never shrinks center to enlarge sides.
+ */
 private fun fitMonthScalesPortrait(
     totalW: androidx.compose.ui.unit.Dp,
     totalH: androidx.compose.ui.unit.Dp,
-    sideRel: Float,
 ): Pair<Float, Float> {
-    val baseW = totalW * 0.92f
-    val baseH = estimateMonthHeight(baseW)
-    var centerScale = 1f
-    var sideScale = sideRel
-    val needed = baseH * (sideScale * 2f + centerScale)
-    if (needed > totalH && needed.value > 0f) {
-        val fit = totalH / needed
-        centerScale *= fit
-        sideScale *= fit
+    val rawAspect = totalH / totalW
+    val designAspect = designAspectHeightOverWidth(rawAspect)
+    // Effective layout rect (letterboxed when raw is outside 4:3…21:9).
+    val layoutH = minOf(totalH, totalW * designAspect)
+    val layoutW = minOf(totalW, totalH / designAspect)
+
+    val fullBaseW = totalW * 0.92f
+    val fullBaseH = estimateMonthHeight(fullBaseW)
+    if (fullBaseH.value <= 0f) return 1f to 0.35f
+
+    // Scale so base width matches layout width (square screens → narrower content).
+    var centerScale = (layoutW * 0.92f) / fullBaseW
+    var centerH = fullBaseH * centerScale
+    if (centerH > layoutH) {
+        centerScale *= (layoutH / centerH)
+        centerH = fullBaseH * centerScale
     }
-    // Prefer readable sides: rebalance within the same weight sum if needed.
-    if (sideScale < 0.28f) {
-        val sum = sideScale * 2f + centerScale
-        val newSide = 0.28f
-        val newCenter = sum - 2f * newSide
-        if (newCenter >= 0.55f) {
-            sideScale = newSide
-            centerScale = newCenter
-        }
-    }
+
+    val remainEach = ((layoutH - centerH) / 2f).coerceAtLeast(0.dp)
+    // Nearly fill each margin; slight inset so months don't kiss the cutout edge.
+    var sideScale = (remainEach / fullBaseH) * 0.96f
+    sideScale = sideScale.coerceAtMost(centerScale).coerceAtLeast(0.01f)
     return centerScale to sideScale
 }
 
-/** Pack landscape scales so 2*side + center fit in [totalW]. */
+/**
+ * Landscape: (1) maximize center by height (width follows intrinsic aspect),
+ * (2) size prev/next uniformly from leftover left/right margins.
+ * Never shrinks center to enlarge sides.
+ */
 private fun fitMonthScalesLandscape(
     totalW: androidx.compose.ui.unit.Dp,
     totalH: androidx.compose.ui.unit.Dp,
-    sideRel: Float,
 ): Pair<Float, Float> {
     val baseH = totalH * 0.92f
     val gridH = (baseH - 48.dp).coerceAtLeast(1.dp)
-    val baseW = (gridH * 7f * 1.15f / 6f).coerceAtMost(totalW * 0.42f)
+    val fullBaseW = gridH * 7f * 1.15f / 6f
+    if (fullBaseW.value <= 0f) return 1f to 0.35f
+
     var centerScale = 1f
-    var sideScale = sideRel
-    val needed = baseW * (sideScale * 2f + centerScale)
-    if (needed > totalW && needed.value > 0f) {
-        val fit = totalW / needed
-        centerScale *= fit
-        sideScale *= fit
+    if (fullBaseW > totalW) {
+        centerScale = totalW / fullBaseW
     }
-    if (sideScale < 0.28f) {
-        val sum = sideScale * 2f + centerScale
-        val newSide = 0.28f
-        val newCenter = sum - 2f * newSide
-        if (newCenter >= 0.55f) {
-            sideScale = newSide
-            centerScale = newCenter
-        }
-    }
+    val centerW = fullBaseW * centerScale
+    val remainEach = ((totalW - centerW) / 2f).coerceAtLeast(0.dp)
+    var sideScale = (remainEach / fullBaseW) * 0.96f
+    sideScale = sideScale.coerceAtMost(centerScale).coerceAtLeast(0.01f)
     return centerScale to sideScale
 }
 

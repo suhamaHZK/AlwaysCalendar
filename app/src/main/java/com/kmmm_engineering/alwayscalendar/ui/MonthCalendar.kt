@@ -248,14 +248,12 @@ fun estimateMonthHeight(width: Dp): Dp {
     return header + grid
 }
 
-/** Side-month scale relative to center, before fit-to-usable. */
-fun sideMonthScale(aspectHeightOverWidth: Float): Float {
-    return when {
-        aspectHeightOverWidth <= 1.4f -> 0.48f
-        aspectHeightOverWidth >= 2.1f -> 0.36f
-        else -> 0.42f
-    }
-}
+/**
+ * Clamp usable aspect (height/width) into the design range:
+ * more square than 4:3 → treat as 4:3; taller than 21:9 → treat as 21:9.
+ */
+fun designAspectHeightOverWidth(rawHeightOverWidth: Float): Float =
+    rawHeightOverWidth.coerceIn(4f / 3f, 21f / 9f)
 
 /** Interpolate uniform scale by distance from focused month (0 = center). */
 fun monthScaleForDistance(distance: Float, centerScale: Float, sideScale: Float): Float {
