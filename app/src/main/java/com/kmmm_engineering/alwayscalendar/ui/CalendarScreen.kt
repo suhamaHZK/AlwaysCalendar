@@ -366,7 +366,7 @@ fun CalendarScreen(
 
 /**
  * Portrait strip: prev / center / next; center maximized, sides fill leftover margins.
- * Each month is the same calendar structure, uniformly scaled (no row crush).
+ * Each month is a 1:1 square, uniformly scaled (no row crush / non-square stretch).
  * [scroll] in pages: +1 means next month is moving into center (content shifted up).
  */
 @Composable
@@ -471,13 +471,9 @@ private fun MonthStripLandscape(
 ) {
     val density = LocalDensity.current
     BoxWithConstraints(modifier = modifier) {
-        // Base = height-maximized intrinsic width; scales shrink uniformly into usable width.
+        // Base = height-maximized 1:1 square; scales shrink uniformly into usable width.
         val baseH = maxHeight * 0.92f
-        // Invert estimateMonthHeight: H ≈ 46.dp + W/7/1.15*6 → W ≈ (H - 46) * 7 * 1.15 / 6
-        val baseW = run {
-            val gridH = (baseH - 46.dp).coerceAtLeast(1.dp)
-            gridH * 7f * 1.15f / 6f
-        }
+        val baseW = baseH // month block is always square
         val sideW = baseW * sideScale
         val centerW = baseW * centerScale
         val gap = MonthStripGap
@@ -545,9 +541,14 @@ private fun MonthStripLandscape(
 }
 
 /**
- * Portrait: (1) maximize center month in the design-aspect usable rect,
- * (2) size prev/next uniformly from the leftover top/bottom margins so each
- * nearly fits that band (minus a few-dp gap). Never shrinks center to enlarge sides.
+ * Portrait: each month is a 1:1 square.
+ * (1) Maximize the center square in the design-aspect usable rect (fit the smaller
+ *     of width / remaining height budget — never crush).
+ * (2) Size prev/next squares uniformly from leftover top/bottom margins so each
+ *     nearly fills that band (minus a few-dp gap). Never shrinks center to enlarge sides.
+ *
+ * Screen letterboxing (4:3…21:9 via [designAspectHeightOverWidth]) still applies to
+ * the usable layout rect; month blocks themselves stay 1:1.
  *
  * Usable height already excludes status-bar / cutout insets; the status cluster is a
  * corner overlay and does not further shrink the equal top/bottom budgets.
@@ -562,48 +563,46 @@ private fun fitMonthScalesPortrait(
     val layoutH = minOf(totalH, totalW * designAspect)
     val layoutW = minOf(totalW, totalH / designAspect)
 
-    val fullBaseW = totalW * 0.92f
-    val fullBaseH = estimateMonthHeight(fullBaseW)
-    if (fullBaseH.value <= 0f) return 1f to 0.35f
+    // Natural (scale=1) month side length from usable width.
+    val fullBaseSide = totalW * 0.92f
+    if (fullBaseSide.value <= 0f) return 1f to 0.35f
 
-    // Scale so base width matches layout width (square screens → narrower content).
-    var centerScale = (layoutW * 0.92f) / fullBaseW
-    var centerH = fullBaseH * centerScale
-    if (centerH > layoutH) {
-        centerScale *= (layoutH / centerH)
-        centerH = fullBaseH * centerScale
+    // Maximize center square: fit layout width, then clamp to layout height.
+    var centerScale = (layoutW * 0.92f) / fullBaseSide
+    var centerSide = fullBaseSide * centerScale
+    if (centerSide > layoutH) {
+        centerScale *= (layoutH / centerSide)
+        centerSide = fullBaseSide * centerScale
     }
 
-    val remainEach = ((layoutH - centerH) / 2f).coerceAtLeast(0.dp)
-    // Near-fit each margin; subtract inter-month gap only (no 0.96 overshrink).
+    val remainEach = ((layoutH - centerSide) / 2f).coerceAtLeast(0.dp)
     val sideBudget = (remainEach - MonthStripGap).coerceAtLeast(0.dp)
-    var sideScale = (sideBudget / fullBaseH) * SideFillFactor
+    var sideScale = (sideBudget / fullBaseSide) * SideFillFactor
     sideScale = sideScale.coerceAtMost(centerScale).coerceAtLeast(0.01f)
     return centerScale to sideScale
 }
 
 /**
- * Landscape: (1) maximize center by height (width follows intrinsic aspect),
- * (2) size prev/next uniformly from leftover left/right margins.
- * Never shrinks center to enlarge sides.
+ * Landscape: each month is a 1:1 square.
+ * (1) Maximize center square by height (side = 0.92 * usable height), clamp to width.
+ * (2) Size prev/next squares uniformly from leftover left/right margins.
+ * Never shrinks center to enlarge sides. No non-uniform crush.
  */
 private fun fitMonthScalesLandscape(
     totalW: androidx.compose.ui.unit.Dp,
     totalH: androidx.compose.ui.unit.Dp,
 ): Pair<Float, Float> {
-    val baseH = totalH * 0.92f
-    val gridH = (baseH - 46.dp).coerceAtLeast(1.dp)
-    val fullBaseW = gridH * 7f * 1.15f / 6f
-    if (fullBaseW.value <= 0f) return 1f to 0.35f
+    val fullBaseSide = totalH * 0.92f
+    if (fullBaseSide.value <= 0f) return 1f to 0.35f
 
     var centerScale = 1f
-    if (fullBaseW > totalW) {
-        centerScale = totalW / fullBaseW
+    if (fullBaseSide > totalW) {
+        centerScale = totalW / fullBaseSide
     }
-    val centerW = fullBaseW * centerScale
-    val remainEach = ((totalW - centerW) / 2f).coerceAtLeast(0.dp)
+    val centerSide = fullBaseSide * centerScale
+    val remainEach = ((totalW - centerSide) / 2f).coerceAtLeast(0.dp)
     val sideBudget = (remainEach - MonthStripGap).coerceAtLeast(0.dp)
-    var sideScale = (sideBudget / fullBaseW) * SideFillFactor
+    var sideScale = (sideBudget / fullBaseSide) * SideFillFactor
     sideScale = sideScale.coerceAtMost(centerScale).coerceAtLeast(0.01f)
     return centerScale to sideScale
 }

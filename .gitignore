@@ -36,3 +36,5 @@ upload-keystore*
 **/rclone.conf
 **/.netrc
 **/credentials*
+
+.local-m2/

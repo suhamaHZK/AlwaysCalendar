@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -45,9 +46,9 @@ private val WeekdayLabelsMonStart = listOf("月", "火", "水", "木", "金", "�
  * Single-month calendar block: header (year / month# / English name), weekday row, date grid.
  * Only days of [yearMonth] are shown; out-of-month cells are blank.
  *
- * Always lays out with full proportional structure (grid aspect preserved).
- * Overall size is controlled by the parent via [Modifier.uniformScale] — never by
- * compressing row heights into a short slot.
+ * Lays out in a **1:1 square** container (width = height). Header + weekday + 6-row
+ * grid are packed tightly inside the square (see docs/reference/8月.png).
+ * Overall size is controlled by the parent via [Modifier.uniformScale].
  */
 @Composable
 fun MonthCalendar(
@@ -62,7 +63,7 @@ fun MonthCalendar(
     val monthNameSp = 13.sp
     val weekdaySp = 11.sp
     val daySp = 16.sp
-    val headerGap = 4.dp
+    val headerGap = 2.dp
     val gridGap = 1.dp
 
     val labels = if (weekStart == WeekStart.SUNDAY) WeekdayLabelsSunStart else WeekdayLabelsMonStart
@@ -74,7 +75,9 @@ fun MonthCalendar(
     }
 
     Column(
-        modifier = modifier.fillMaxWidth(),
+        modifier = modifier
+            .fillMaxWidth()
+            .aspectRatio(1f),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Row(
@@ -121,16 +124,23 @@ fun MonthCalendar(
         }
         Spacer(Modifier.height(gridGap))
 
-        Column(modifier = Modifier.fillMaxWidth()) {
+        // 6 equal rows fill the remaining square area (no fixed cell aspect).
+        Column(modifier = Modifier.weight(1f).fillMaxWidth()) {
             days.chunked(7).forEach { week ->
-                Row(modifier = Modifier.fillMaxWidth()) {
+                Row(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth(),
+                ) {
                     week.forEach { cell ->
                         DayCell(
                             cell = cell,
                             today = today,
                             isHoliday = isHoliday,
                             daySp = daySp,
-                            modifier = Modifier.weight(1f),
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxHeight(),
                         )
                     }
                 }
@@ -148,7 +158,7 @@ private fun DayCell(
     modifier: Modifier = Modifier,
 ) {
     Box(
-        modifier = modifier.aspectRatio(1.15f),
+        modifier = modifier,
         contentAlignment = Alignment.Center,
     ) {
         val date = cell.date ?: return@Box
@@ -237,21 +247,14 @@ fun Modifier.uniformScale(scale: Float): Modifier {
 }
 
 /**
- * Intrinsic height of [MonthCalendar] at [width] (scale=1 typography, 6×7 aspect grid).
- * Used to pack center/side scales into the usable area without crushing rows.
+ * Intrinsic height of [MonthCalendar] at [width]: always equal to [width] (1:1 square).
  */
-fun estimateMonthHeight(width: Dp): Dp {
-    val cellH = width / 7f / 1.15f
-    val grid = cellH * 6f
-    // Header: 28sp month numeral (~33dp) + 4dp gap + 11sp weekday (~13dp) + 1dp gap.
-    // Keep close to real Compose text metrics so side packing does not over-reserve.
-    val header = 46.dp
-    return header + grid
-}
+fun estimateMonthHeight(width: Dp): Dp = width
 
 /**
- * Clamp usable aspect (height/width) into the design range:
+ * Clamp usable aspect (height/width) into the design range for **screen letterboxing**:
  * more square than 4:3 → treat as 4:3; taller than 21:9 → treat as 21:9.
+ * Individual month blocks themselves are always 1:1 regardless of this clamp.
  */
 fun designAspectHeightOverWidth(rawHeightOverWidth: Float): Float =
     rawHeightOverWidth.coerceIn(4f / 3f, 21f / 9f)
