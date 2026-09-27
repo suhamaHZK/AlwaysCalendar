@@ -412,7 +412,7 @@ private fun MonthStripPortrait(
                                 with(density) { (y - visualH / 2f).toPx() }.roundToInt(),
                             )
                         }
-                        .width(baseW)
+                        // uniformScale must wrap the natural-size calendar (not sit under width())
                         .uniformScale(scale)
                         .graphicsLayer {
                             alpha = (1.25f - dist * 0.35f).coerceIn(0.35f, 1f)
@@ -433,7 +433,7 @@ private fun MonthStripPortrait(
                         weekStart = weekStart,
                         today = today,
                         isHoliday = isHoliday,
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier.width(baseW),
                     )
                 }
             }
@@ -498,7 +498,6 @@ private fun MonthStripLandscape(
                                 0,
                             )
                         }
-                        .width(baseW)
                         .uniformScale(scale)
                         .graphicsLayer {
                             alpha = (1.25f - dist * 0.35f).coerceIn(0.35f, 1f)
@@ -519,7 +518,7 @@ private fun MonthStripLandscape(
                         weekStart = weekStart,
                         today = today,
                         isHoliday = isHoliday,
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier.width(baseW),
                     )
                 }
             }
