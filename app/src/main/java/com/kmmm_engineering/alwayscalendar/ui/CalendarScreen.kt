@@ -488,7 +488,8 @@ private fun MonthStripLandscape(
     val density = LocalDensity.current
     BoxWithConstraints(modifier = modifier) {
         // Base = height-maximized 1:1 square (side = usableHeight at scale 1).
-        // Scales from fitMonthScalesLandscape shrink uniformly into leftover width.
+        // Scales from fitMonthScalesLandscape shrink uniformly into the letterboxed
+        // layout rect (4:3…21:9) and leftover left/right width; pack is centered.
         val baseW = maxHeight // month block is always square; side == usable height
         val sideW = baseW * sideScale
         val centerW = baseW * centerScale
@@ -601,25 +602,39 @@ private fun fitMonthScalesPortrait(
 /**
  * Landscape: same procedure as portrait, left/right version.
  * Each month is a 1:1 square.
- * (1) Maximize center square by height: side = usableHeight (width matches → square).
- *     If that exceeds usable width, clamp so the square fits width.
+ * (1) Maximize center square by height inside the design-aspect usable rect
+ *     (side = layoutH; if that exceeds layoutW, clamp so the square fits width).
  * (2) Only then size prev/next squares uniformly from leftover left/right margins
  *     (mirror of portrait's top/bottom leftover). Never shrinks center to enlarge sides.
+ *
+ * Screen letterboxing (4:3…21:9 via [designAspectWidthOverHeight]) still applies to
+ * the usable layout rect; month blocks themselves stay 1:1.
+ * Near-square → 4:3 (letterbox top/bottom); wider than 21:9 → 21:9 (letterbox left/right).
  */
 private fun fitMonthScalesLandscape(
     totalW: androidx.compose.ui.unit.Dp,
     totalH: androidx.compose.ui.unit.Dp,
 ): Pair<Float, Float> {
+    val rawAspect = totalW / totalH
+    val designAspect = designAspectWidthOverHeight(rawAspect)
+    // Effective layout rect (letterboxed when raw is outside 4:3…21:9).
+    val layoutW = minOf(totalW, totalH * designAspect)
+    val layoutH = minOf(totalH, totalW / designAspect)
+
     // Natural (scale=1) side length = full usable height (caller already applied insets/padding).
+    // Scales shrink uniformly into the letterboxed layout rect (MonthStrip uses maxHeight as base).
     val fullBaseSide = totalH
     if (fullBaseSide.value <= 0f) return 1f to 0.35f
 
-    var centerScale = 1f
-    if (fullBaseSide > totalW) {
-        centerScale = totalW / fullBaseSide
+    // Maximize center square: fit layout height, then clamp to layout width.
+    var centerScale = layoutH / fullBaseSide
+    var centerSide = fullBaseSide * centerScale
+    if (centerSide > layoutW) {
+        centerScale *= (layoutW / centerSide)
+        centerSide = fullBaseSide * centerScale
     }
-    val centerSide = fullBaseSide * centerScale
-    val remainEach = ((totalW - centerSide) / 2f).coerceAtLeast(0.dp)
+
+    val remainEach = ((layoutW - centerSide) / 2f).coerceAtLeast(0.dp)
     val sideBudget = (remainEach - MonthStripGap).coerceAtLeast(0.dp)
     var sideScale = (sideBudget / fullBaseSide) * SideFillFactor
     sideScale = sideScale.coerceAtMost(centerScale).coerceAtLeast(0.01f)

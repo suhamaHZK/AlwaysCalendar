@@ -288,12 +288,21 @@ fun Modifier.uniformScale(scale: Float): Modifier {
 fun estimateMonthHeight(width: Dp): Dp = width
 
 /**
- * Clamp usable aspect (height/width) into the design range for **screen letterboxing**:
+ * Clamp usable aspect (height/width) into the design range for **portrait screen letterboxing**:
  * more square than 4:3 → treat as 4:3; taller than 21:9 → treat as 21:9.
  * Individual month blocks themselves are always 1:1 regardless of this clamp.
  */
 fun designAspectHeightOverWidth(rawHeightOverWidth: Float): Float =
     rawHeightOverWidth.coerceIn(4f / 3f, 21f / 9f)
+
+/**
+ * Clamp usable aspect (width/height) into the design range for **landscape screen letterboxing**
+ * (mirror of [designAspectHeightOverWidth]):
+ * more square than 4:3 → treat as 4:3 (width:height); wider than 21:9 → treat as 21:9.
+ * Individual month blocks themselves are always 1:1 regardless of this clamp.
+ */
+fun designAspectWidthOverHeight(rawWidthOverHeight: Float): Float =
+    rawWidthOverHeight.coerceIn(4f / 3f, 21f / 9f)
 
 /**
  * Interpolate uniform scale by distance from focused month (0 = center).
