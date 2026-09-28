@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.areStatusBarsVisible
 import androidx.compose.foundation.layout.displayCutout
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -28,10 +29,10 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBarsIgnoringVisibility
-import androidx.compose.foundation.layout.union
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.layout.windowInsetsTopHeight
 import androidx.compose.material3.Text
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -76,17 +77,18 @@ import kotlin.math.abs
 import kotlin.math.roundToInt
 import kotlin.random.Random
 
-/** Usable-area insets: status bar (even when hidden) + display cutout / punch-hole. */
+/** Usable-area insets: display cutout / punch-hole only (no permanent status-bar reserve). */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun usableWindowInsets(): WindowInsets =
-    WindowInsets.statusBarsIgnoringVisibility.union(WindowInsets.displayCutout)
+private fun usableWindowInsets(): WindowInsets = WindowInsets.displayCutout
 
 /**
- * Status cluster sits in the top-left corner overlay; system status/cutout are already
- * excluded via [usableWindowInsets]. Side months near-fill the remaining top/bottom
- * bands (equal budgets around the centered month). A few-dp [MonthStripGap] keeps
- * months from kissing; [SideFillFactor] replaces the old 0.96 overshrink.
+ * Status cluster sits in the top-left corner overlay; cutout is already excluded via
+ * [usableWindowInsets]. When the system status bar is visible (incl. transient swipe),
+ * a dark scrim covers that band for readability without re-padding the layout.
+ * Side months near-fill the remaining top/bottom bands (equal budgets around the
+ * centered month). A few-dp [MonthStripGap] keeps months from kissing;
+ * [SideFillFactor] replaces the old 0.96 overshrink.
  */
 private val MonthStripGap = 3.dp
 
@@ -333,6 +335,19 @@ fun CalendarScreen(
                     modifier = Modifier.fillMaxSize(),
                 )
             }
+        }
+
+        // Darken status-bar band while it is visible (incl. transient swipe show)
+        // so clock/battery icons remain readable over calendar content. Does not
+        // permanently reserve layout space — content still only pads for cutout.
+        if (WindowInsets.areStatusBarsVisible) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .fillMaxWidth()
+                    .windowInsetsTopHeight(WindowInsets.statusBars)
+                    .background(Color.Black.copy(alpha = 0.5f)),
+            )
         }
 
         // Status (top-left) drawn above the month strip so near-filled prev month

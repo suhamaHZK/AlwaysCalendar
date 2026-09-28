@@ -19,7 +19,7 @@ android {
 
         // Sideload / debug: APP_DEBUG="001" → settings shows "0.0.1 debug001".
         // Store AAB: pass -PappDebug= (empty) so display is "ver.0.0.1".
-        val appDebug = (findProperty("appDebug") as String?)?.trim() ?: "010"
+        val appDebug = (findProperty("appDebug") as String?)?.trim() ?: "011"
         buildConfigField("String", "APP_DEBUG", "\"$appDebug\"")
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
