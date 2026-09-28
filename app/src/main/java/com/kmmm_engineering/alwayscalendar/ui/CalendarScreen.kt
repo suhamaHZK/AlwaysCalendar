@@ -5,8 +5,6 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.runtime.Composable
 
 import android.content.res.Configuration
-import android.os.Build
-import android.graphics.RenderEffect as AndroidRenderEffect
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
@@ -47,11 +45,9 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.SideEffect
 import androidx.compose.ui.Alignment
-import androidx.compose.ui.draw.BlurredEdgeTreatment
-import androidx.compose.ui.draw.blur
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.asComposeRenderEffect
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.StrokeCap
@@ -66,6 +62,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -97,52 +94,48 @@ private fun usableWindowInsets(): WindowInsets = WindowInsets.displayCutout
  */
 
 /**
- * Status-bar scrim (debug013).
+ * Status-bar scrim (debug015).
  *
- * - alpha = opacityPercent/100f (clamped 0..100).
- * - blurDp 0..50: softens the scrim edges into content below (visible change with setting).
- *   API 31+ (S): [AndroidRenderEffect.createBlurEffect] via [graphicsLayer] (hardware).
- *   Older: Compose [Modifier.blur] software path.
- *   Same-window true backdrop capture of calendar pixels needs a haze/capture lib;
- *   black scrim + edge feather is the safe approach. blur=0 → hard-edge black only.
+ * - Band: opaque black at [opacityPercent] for exactly [bandHeight] (status-bar height).
+ * - "Blur" is a soft bottom feather only: when blurDp>0, add a vertical gradient
+ *   (black@alpha → transparent) of height blurDp below the band. Raising blur lengthens
+ *   the feather; the opaque band stays the same height (no RenderEffect/Modifier.blur).
  */
 @Composable
 private fun StatusBarScrim(
     opacityPercent: Int,
     blurDp: Int,
+    bandHeight: Dp,
     modifier: Modifier = Modifier,
 ) {
     val opacity = UserSettings.clampScrimOpacity(opacityPercent)
     val blur = UserSettings.clampScrimBlur(blurDp)
     val alpha = opacity / 100f
-    val blurRadius = blur.dp
-    val density = LocalDensity.current
-    val blurPx = with(density) { blurRadius.toPx() }.coerceAtLeast(0.01f)
+    val featherHeight = blur.dp
 
-    // blur must wrap background (outer) so the black fill is what gets softened.
-    val blurModifier = when {
-        blur <= 0 -> Modifier
-        Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
-            Modifier.graphicsLayer {
-                renderEffect = AndroidRenderEffect
-                    .createBlurEffect(blurPx, blurPx, android.graphics.Shader.TileMode.CLAMP)
-                    .asComposeRenderEffect()
-                clip = false
-            }
-        }
-        else -> {
-            Modifier.blur(
-                radius = blurRadius,
-                edgeTreatment = BlurredEdgeTreatment.Unbounded,
+    Column(modifier = modifier.fillMaxWidth()) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(bandHeight)
+                .background(Color.Black.copy(alpha = alpha)),
+        )
+        if (blur > 0) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(featherHeight)
+                    .background(
+                        Brush.verticalGradient(
+                            colors = listOf(
+                                Color.Black.copy(alpha = alpha),
+                                Color.Transparent,
+                            ),
+                        ),
+                    ),
             )
         }
     }
-
-    Box(
-        modifier = modifier
-            .then(blurModifier)
-            .background(Color.Black.copy(alpha = alpha)),
-    )
 }
 
 private val MonthStripGap = 3.dp
@@ -164,6 +157,8 @@ fun CalendarScreen(
     onUnlockSliderVisibilityChange: (Boolean) -> Unit = {},
     /** From MainActivity: WindowInsetsCompat.isVisible(statusBars). */
     statusBarsVisibleCompat: Boolean = false,
+    /** From MainActivity: WindowInsetsAnimationCompat status-bar animation window. */
+    statusBarsTransientShowing: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
     var nowMs by remember { mutableLongStateOf(System.currentTimeMillis()) }
@@ -180,6 +175,9 @@ fun CalendarScreen(
     // (prev/next above/below). Prefer portrait stack on the equality side.
     val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
     var landscapeStatusSingleLine by remember { mutableStateOf(false) }
+    // debug015: edge-swipe fallback when transient insets never report visible.
+    var edgeSwipeShowing by remember { mutableStateOf(false) }
+    var edgeSwipeHideToken by remember { mutableLongStateOf(0L) }
     val today = remember(nowMs) { LocalDate.now() }
     val wallTime = remember(nowMs) {
         val cal = java.util.Calendar.getInstance().apply { timeInMillis = nowMs }
@@ -214,6 +212,17 @@ fun CalendarScreen(
         if (showSlider) {
             delay(8_000L)
             showSlider = false
+        }
+    }
+
+    // Match system transient-bar feel (~2.5–3s) after top-edge swipe.
+    LaunchedEffect(edgeSwipeHideToken) {
+        val token = edgeSwipeHideToken
+        if (token == 0L) return@LaunchedEffect
+        edgeSwipeShowing = true
+        delay(2_800L)
+        if (edgeSwipeHideToken == token) {
+            edgeSwipeShowing = false
         }
     }
 
@@ -394,37 +403,8 @@ fun CalendarScreen(
             }
         }
 
-        // Darken status-bar band while it is visible (incl. transient swipe show)
-        // so clock/battery icons remain readable over calendar content. Does not
-        // permanently reserve layout space — content still only pads for cutout.
-        // debug014: multi-path visibility + IgnoringVisibility height (24.dp fallback).
-        // debug013: opacity/blur from settings (DataStore).
-        val density = LocalDensity.current
-        val statusBarsTopPx = WindowInsets.statusBars.getTop(density)
-        val ignoringTopPx = WindowInsets.statusBarsIgnoringVisibility.getTop(density)
-        val composeSaysVisible =
-            WindowInsets.areStatusBarsVisible || statusBarsTopPx > 0
-        val showScrim =
-            settings.debugScrimAlwaysShow || composeSaysVisible || statusBarsVisibleCompat
-        if (showScrim) {
-            val scrimHeight = if (ignoringTopPx > 0) {
-                with(density) { ignoringTopPx.toDp() }
-            } else {
-                24.dp
-            }
-            StatusBarScrim(
-                opacityPercent = settings.debugScrimOpacityPercent,
-                blurDp = settings.debugScrimBlurDp,
-                modifier = Modifier
-                    .align(Alignment.TopCenter)
-                    .fillMaxWidth()
-                    .height(scrimHeight),
-            )
-        }
-
-        // Status (top-left) drawn above the month strip so near-filled prev month
-        // does not cover time / battery / signal. Landscape may collapse to 1 line
-        // when the stacked cluster would overlap the left/center month.
+        // Status (top-left) above the month strip. Drawn BEFORE the scrim so the
+        // dark band covers clock / battery / signal (debug015 z-order).
         StatusCluster(
             timeText = wallTime,
             batteryPercent = batteryPercent,
@@ -436,6 +416,58 @@ fun CalendarScreen(
                 .windowInsetsPadding(usableWindowInsets())
                 .padding(start = 12.dp, top = 6.dp),
         )
+
+        // Darken status-bar band while visible (incl. transient / edge-swipe).
+        // Height = statusBarsIgnoringVisibility (24.dp fallback); feather is extra below.
+        // debug015: animation + edge-swipe paths; opaque band + gradient feather (no blur).
+        val density = LocalDensity.current
+        val statusBarsTopPx = WindowInsets.statusBars.getTop(density)
+        val ignoringTopPx = WindowInsets.statusBarsIgnoringVisibility.getTop(density)
+        val composeSaysVisible =
+            WindowInsets.areStatusBarsVisible || statusBarsTopPx > 0
+        val showScrim =
+            settings.debugScrimAlwaysShow ||
+                composeSaysVisible ||
+                statusBarsVisibleCompat ||
+                statusBarsTransientShowing ||
+                edgeSwipeShowing
+        if (showScrim) {
+            val scrimHeight = if (ignoringTopPx > 0) {
+                with(density) { ignoringTopPx.toDp() }
+            } else {
+                24.dp
+            }
+            StatusBarScrim(
+                opacityPercent = settings.debugScrimOpacityPercent,
+                blurDp = settings.debugScrimBlurDp,
+                bandHeight = scrimHeight,
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .fillMaxWidth(),
+            )
+        }
+
+        // Top-edge swipe (~40dp) → show scrim briefly when system transient insets
+        // never flip visible. Skip when always-on (scrim already up). Settings screen
+        // is a separate route so this overlay is calendar-only.
+        if (!settings.debugScrimAlwaysShow) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .fillMaxWidth()
+                    .height(40.dp)
+                    .pointerInput(Unit) {
+                        detectVerticalDragGestures(
+                            onVerticalDrag = { change, dragAmount ->
+                                if (dragAmount > 2f) {
+                                    change.consume()
+                                    edgeSwipeHideToken = System.currentTimeMillis()
+                                }
+                            },
+                        )
+                    },
+            )
+        }
 
         val showPersistentHint = !settings.firstRunHintSeen && !showSlider
         val showLostUserHint = !showSlider && lostUserHintUntil > System.currentTimeMillis()

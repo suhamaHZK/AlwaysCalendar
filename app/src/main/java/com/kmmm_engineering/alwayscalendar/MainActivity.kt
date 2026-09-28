@@ -6,6 +6,7 @@ import android.view.WindowManager
 import android.view.View
 import android.view.ViewGroup
 import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsAnimationCompat
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
@@ -220,9 +221,13 @@ class MainActivity : AppCompatActivity() {
             // false/0 during BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE; WindowInsetsCompat
             // isVisible is the reliable path recommended by the immersive guide.
             // Spy view: do not replace Compose's OnApplyWindowInsetsListener on content.
+            // debug015: also track WindowInsetsAnimationCompat for transient overlay bars
+            // that never flip isVisible / insets height.
             var statusBarsVisibleCompat by remember { mutableStateOf(false) }
+            var statusBarsTransientShowing by remember { mutableStateOf(false) }
             DisposableEffect(Unit) {
                 val content = findViewById<ViewGroup>(android.R.id.content)
+                val decor = window.decorView
                 val spy = View(this@MainActivity).apply {
                     layoutParams = ViewGroup.LayoutParams(0, 0)
                     importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
@@ -238,7 +243,56 @@ class MainActivity : AppCompatActivity() {
                         root.isVisible(WindowInsetsCompat.Type.statusBars())
                 }
                 ViewCompat.requestApplyInsets(spy)
+
+                val clearTransient = Runnable { statusBarsTransientShowing = false }
+                val animCallback = object : WindowInsetsAnimationCompat.Callback(
+                    WindowInsetsAnimationCompat.Callback.DISPATCH_MODE_CONTINUE_ON_SUBTREE,
+                ) {
+                    private fun tracksStatusBars(animation: WindowInsetsAnimationCompat): Boolean =
+                        (animation.typeMask and WindowInsetsCompat.Type.statusBars()) != 0
+
+                    override fun onPrepare(animation: WindowInsetsAnimationCompat) {
+                        if (tracksStatusBars(animation)) {
+                            decor.removeCallbacks(clearTransient)
+                            statusBarsTransientShowing = true
+                        }
+                    }
+
+                    override fun onStart(
+                        animation: WindowInsetsAnimationCompat,
+                        bounds: WindowInsetsAnimationCompat.BoundsCompat,
+                    ): WindowInsetsAnimationCompat.BoundsCompat {
+                        if (tracksStatusBars(animation)) {
+                            decor.removeCallbacks(clearTransient)
+                            statusBarsTransientShowing = true
+                        }
+                        return bounds
+                    }
+
+                    override fun onProgress(
+                        insets: WindowInsetsCompat,
+                        runningAnimations: MutableList<WindowInsetsAnimationCompat>,
+                    ): WindowInsetsCompat {
+                        val statusRunning = runningAnimations.any { tracksStatusBars(it) }
+                        if (statusRunning) {
+                            statusBarsTransientShowing = true
+                        }
+                        return insets
+                    }
+
+                    override fun onEnd(animation: WindowInsetsAnimationCompat) {
+                        if (!tracksStatusBars(animation)) return
+                        // Transient bars often stay overlaid ~2–3s after the show
+                        // animation ends without flipping isVisible; keep scrim up briefly.
+                        decor.removeCallbacks(clearTransient)
+                        decor.postDelayed(clearTransient, 2_800L)
+                    }
+                }
+                ViewCompat.setWindowInsetsAnimationCallback(decor, animCallback)
+
                 onDispose {
+                    decor.removeCallbacks(clearTransient)
+                    ViewCompat.setWindowInsetsAnimationCallback(decor, null)
                     ViewCompat.setOnApplyWindowInsetsListener(spy, null)
                     content.removeView(spy)
                 }
@@ -279,6 +333,7 @@ class MainActivity : AppCompatActivity() {
                             networkStatus = network,
                             holidayDates = holidayDates,
                             statusBarsVisibleCompat = statusBarsVisibleCompat,
+                            statusBarsTransientShowing = statusBarsTransientShowing,
                             onEnsureMonth = { ym ->
                                 holidays.ensureMonth(ym.year, ym.monthValue)
                             },
