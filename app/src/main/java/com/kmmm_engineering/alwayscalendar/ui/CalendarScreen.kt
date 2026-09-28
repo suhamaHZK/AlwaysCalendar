@@ -5,6 +5,8 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.runtime.Composable
 
 import android.content.res.Configuration
+import android.os.Build
+import android.graphics.RenderEffect as AndroidRenderEffect
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
@@ -45,8 +47,11 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.SideEffect
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.BlurredEdgeTreatment
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asComposeRenderEffect
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.StrokeCap
@@ -90,6 +95,56 @@ private fun usableWindowInsets(): WindowInsets = WindowInsets.displayCutout
  * centered month). A few-dp [MonthStripGap] keeps months from kissing;
  * [SideFillFactor] replaces the old 0.96 overshrink.
  */
+
+/**
+ * Status-bar scrim (debug013).
+ *
+ * - alpha = opacityPercent/100f (clamped 0..100).
+ * - blurDp 0..50: softens the scrim edges into content below (visible change with setting).
+ *   API 31+ (S): [AndroidRenderEffect.createBlurEffect] via [graphicsLayer] (hardware).
+ *   Older: Compose [Modifier.blur] software path.
+ *   Same-window true backdrop capture of calendar pixels needs a haze/capture lib;
+ *   black scrim + edge feather is the safe approach. blur=0 → hard-edge black only.
+ */
+@Composable
+private fun StatusBarScrim(
+    opacityPercent: Int,
+    blurDp: Int,
+    modifier: Modifier = Modifier,
+) {
+    val opacity = UserSettings.clampScrimOpacity(opacityPercent)
+    val blur = UserSettings.clampScrimBlur(blurDp)
+    val alpha = opacity / 100f
+    val blurRadius = blur.dp
+    val density = LocalDensity.current
+    val blurPx = with(density) { blurRadius.toPx() }.coerceAtLeast(0.01f)
+
+    // blur must wrap background (outer) so the black fill is what gets softened.
+    val blurModifier = when {
+        blur <= 0 -> Modifier
+        Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
+            Modifier.graphicsLayer {
+                renderEffect = AndroidRenderEffect
+                    .createBlurEffect(blurPx, blurPx, android.graphics.Shader.TileMode.CLAMP)
+                    .asComposeRenderEffect()
+                clip = false
+            }
+        }
+        else -> {
+            Modifier.blur(
+                radius = blurRadius,
+                edgeTreatment = BlurredEdgeTreatment.Unbounded,
+            )
+        }
+    }
+
+    Box(
+        modifier = modifier
+            .then(blurModifier)
+            .background(Color.Black.copy(alpha = alpha)),
+    )
+}
+
 private val MonthStripGap = 3.dp
 
 /** Near-fill factor for side months (was 0.96 — left visible slack). */
@@ -340,13 +395,15 @@ fun CalendarScreen(
         // Darken status-bar band while it is visible (incl. transient swipe show)
         // so clock/battery icons remain readable over calendar content. Does not
         // permanently reserve layout space — content still only pads for cutout.
+        // debug013: opacity/blur from settings (DataStore).
         if (WindowInsets.areStatusBarsVisible) {
-            Box(
+            StatusBarScrim(
+                opacityPercent = settings.debugScrimOpacityPercent,
+                blurDp = settings.debugScrimBlurDp,
                 modifier = Modifier
                     .align(Alignment.TopCenter)
                     .fillMaxWidth()
-                    .windowInsetsTopHeight(WindowInsets.statusBars)
-                    .background(Color.Black.copy(alpha = 0.5f)),
+                    .windowInsetsTopHeight(WindowInsets.statusBars),
             )
         }
 

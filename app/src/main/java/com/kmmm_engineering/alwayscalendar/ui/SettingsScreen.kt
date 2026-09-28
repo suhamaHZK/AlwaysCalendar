@@ -11,6 +11,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -38,11 +40,15 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import com.kmmm_engineering.alwayscalendar.BuildConfig
 import com.kmmm_engineering.alwayscalendar.R
@@ -215,6 +221,24 @@ fun SettingsScreen(
                     scope.launch { repository.setDiscordCharge(v) }
                 }
 
+                SectionTitle(stringResource(R.string.debug_scrim_opacity))
+                DebugIntField(
+                    value = settings.debugScrimOpacityPercent,
+                    valueRange = UserSettings.DEBUG_SCRIM_OPACITY_MIN..UserSettings.DEBUG_SCRIM_OPACITY_MAX,
+                    defaultValue = UserSettings.DEBUG_SCRIM_OPACITY_DEFAULT,
+                    suffix = "%",
+                    onCommit = { v -> scope.launch { repository.setDebugScrimOpacity(v) } },
+                )
+
+                SectionTitle(stringResource(R.string.debug_scrim_blur))
+                DebugIntField(
+                    value = settings.debugScrimBlurDp,
+                    valueRange = UserSettings.DEBUG_SCRIM_BLUR_MIN..UserSettings.DEBUG_SCRIM_BLUR_MAX,
+                    defaultValue = UserSettings.DEBUG_SCRIM_BLUR_DEFAULT,
+                    suffix = "dp",
+                    onCommit = { v -> scope.launch { repository.setDebugScrimBlur(v) } },
+                )
+
                 SectionTitle(stringResource(R.string.credits_oss))
                 Text(
                     text = stringResource(R.string.credits_holidays_jp),
@@ -337,6 +361,61 @@ private fun SwitchRow(
         Text(label, color = Color.White, modifier = Modifier.weight(1f))
         Switch(checked = checked, onCheckedChange = onCheckedChange)
     }
+}
+
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun DebugIntField(
+    value: Int,
+    valueRange: IntRange,
+    defaultValue: Int,
+    suffix: String,
+    onCommit: (Int) -> Unit,
+) {
+    var text by remember(value) { mutableStateOf(value.toString()) }
+    val focusManager = LocalFocusManager.current
+
+    fun finalize() {
+        val clamped = (text.toIntOrNull() ?: defaultValue).coerceIn(valueRange)
+        text = clamped.toString()
+        onCommit(clamped)
+    }
+
+    OutlinedTextField(
+        value = text,
+        onValueChange = { raw ->
+            // Allow empty while typing; reject non-digits. Out-of-range is coerced on commit.
+            if (raw.isEmpty()) {
+                text = ""
+                return@OutlinedTextField
+            }
+            if (raw.all { it.isDigit() } && raw.length <= 3) {
+                text = raw
+                raw.toIntOrNull()?.let { parsed ->
+                    onCommit(parsed.coerceIn(valueRange))
+                }
+            }
+        },
+        modifier = Modifier
+            .fillMaxWidth()
+            .onFocusChanged { state ->
+                if (!state.isFocused) finalize()
+            },
+        singleLine = true,
+        keyboardOptions = KeyboardOptions(
+            keyboardType = KeyboardType.Number,
+            imeAction = ImeAction.Done,
+        ),
+        keyboardActions = KeyboardActions(
+            onDone = {
+                finalize()
+                focusManager.clearFocus()
+            },
+        ),
+        suffix = { Text(suffix, color = Color(0xFFAAAAAA)) },
+        colors = ExposedDropdownMenuDefaults.outlinedTextFieldColors(),
+    )
 }
 
 private fun versionFooter(): String {

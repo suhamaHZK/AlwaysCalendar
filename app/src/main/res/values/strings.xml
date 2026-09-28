@@ -29,6 +29,8 @@
     <string name="holiday_fetch_failed">祝日データが取得できません</string>
     <string name="credits_oss">クレジット / オープンソース</string>
     <string name="credits_holidays_jp">祝日データ: holidays-jp (MIT) — https://holidays-jp.github.io/</string>
+    <string name="debug_scrim_opacity">[debug]不透明度設定(0～100の間で入力)</string>
+    <string name="debug_scrim_blur">[debug]ぼかし設定(0～50の間で入力)</string>
     <string name="back">戻る</string>
     <string name="on">オン</string>
     <string name="off">オフ</string>

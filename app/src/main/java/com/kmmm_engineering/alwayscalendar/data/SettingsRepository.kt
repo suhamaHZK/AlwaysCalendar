@@ -29,6 +29,9 @@ class SettingsRepository(private val context: Context) {
         val firstRunHintSeen = booleanPreferencesKey("first_run_hint_seen")
         val weekStart = stringPreferencesKey("week_start")
         val misoperationLock = booleanPreferencesKey("misoperation_lock")
+        // debug013 temporary status-bar scrim tunables
+        val debugScrimOpacity = intPreferencesKey("debug_scrim_opacity")
+        val debugScrimBlur = intPreferencesKey("debug_scrim_blur")
         // Discord threshold-cross persistence
         val alertLastPercent = intPreferencesKey("alert_last_percent")
         val alertLastCharging = booleanPreferencesKey("alert_last_charging")
@@ -54,6 +57,12 @@ class SettingsRepository(private val context: Context) {
             runCatching { WeekStart.valueOf(it) }.getOrDefault(WeekStart.SUNDAY)
         } ?: WeekStart.SUNDAY,
         misoperationLock = prefs[Keys.misoperationLock] ?: false,
+        debugScrimOpacityPercent = UserSettings.clampScrimOpacity(
+            prefs[Keys.debugScrimOpacity] ?: UserSettings.DEBUG_SCRIM_OPACITY_DEFAULT,
+        ),
+        debugScrimBlurDp = UserSettings.clampScrimBlur(
+            prefs[Keys.debugScrimBlur] ?: UserSettings.DEBUG_SCRIM_BLUR_DEFAULT,
+        ),
     )
 
     val settingsFlow: Flow<UserSettings> = context.dataStore.data.map { prefs ->
@@ -79,6 +88,8 @@ class SettingsRepository(private val context: Context) {
             prefs[Keys.firstRunHintSeen] = next.firstRunHintSeen
             prefs[Keys.weekStart] = next.weekStart.name
             prefs[Keys.misoperationLock] = next.misoperationLock
+            prefs[Keys.debugScrimOpacity] = UserSettings.clampScrimOpacity(next.debugScrimOpacityPercent)
+            prefs[Keys.debugScrimBlur] = UserSettings.clampScrimBlur(next.debugScrimBlurDp)
         }
     }
 
@@ -92,6 +103,12 @@ class SettingsRepository(private val context: Context) {
     suspend fun markFirstRunHintSeen() = update { it.copy(firstRunHintSeen = true) }
     suspend fun setWeekStart(v: WeekStart) = update { it.copy(weekStart = v) }
     suspend fun setMisoperationLock(v: Boolean) = update { it.copy(misoperationLock = v) }
+    suspend fun setDebugScrimOpacity(v: Int) = update {
+        it.copy(debugScrimOpacityPercent = UserSettings.clampScrimOpacity(v))
+    }
+    suspend fun setDebugScrimBlur(v: Int) = update {
+        it.copy(debugScrimBlurDp = UserSettings.clampScrimBlur(v))
+    }
 
     suspend fun loadThresholdAlertSnapshot(): ThresholdAlertSnapshot {
         val prefs = context.dataStore.data.first()

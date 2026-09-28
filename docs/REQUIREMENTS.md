@@ -44,6 +44,8 @@
   - 実装: `designAspectWidthOverHeight` → 有効レイアウト矩形に対して中央高さ最大→左右余白でサイド。月ブロックは常に 1:1
 - **Insets**: `usableWindowInsets` = `displayCutout` のみ（ステータスバー領域は常時予約しない）。横で左右 cutout の `max(left,right)` を上下へ対称適用はしない
 - **ステータスバー表示時スクラム**: `WindowInsets.areStatusBarsVisible`（transient 含む）が true のとき、画面最上に `statusBars` 高さの半透明黒オーバーレイ（可読性用。レイアウトは空け直さない）
+  - **一時調整（debug013）**: 設定の `[debug]不透明度設定`（0～100%、初期85、`alpha = 値/100f`）と `[debug]ぼかし設定`（0～50dp、初期0）。DataStore保存。範囲外・空・非数値は確定時に clamp（不透明度0..100、ぼかし0..50）
+  - ぼかし: API 31+ は `RenderEffect.createBlurEffect`（graphicsLayer）。未満は Compose `Modifier.blur`（ソフト）。同ウィンドウ背面ピクセルの本格 backdrop 捕捉はせず、黒スクラム＋エッジフェザーで見た目変化。blur=0 はハードエッジ黒のみ
 - 左上ステータスは通常タテ積み（時刻／電池／電波）。横画面で左月（または中央）と重なりそうなとき **1行表示**（例: `15:31  76%  [wifi]`）
 
 ## 4. 月切り替え操作
@@ -79,6 +81,8 @@
 | アプリ起動中の自動スリープ可否 | する / しない | しない | 同一仕様 |
 | 誤操作抑止モード | オン / オフ | オフ | **本アプリ固有**（月切替のみ無効） |
 | ライセンス表記 | holidays-jp (MIT) | — | 設定最下部。表記は充電時計参考 |
+| `[debug]不透明度設定`（一時） | 数値 0～100（%） | 85 | debug013。ステータスバースクラム alpha。空/非数値は確定時 clamp |
+| `[debug]ぼかし設定`（一時） | 数値 0～50（dp） | 0 | debug013。API31+ RenderEffect / 未満 Compose blur。不可時は黒のみ |
 | バージョン表示 | 上記形式 | — | 設定最下部 |
 
 ## 7. 日本の祝日
