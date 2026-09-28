@@ -3,6 +3,9 @@ package com.kmmm_engineering.alwayscalendar
 import android.content.pm.ActivityInfo
 import android.os.Bundle
 import android.view.WindowManager
+import android.view.View
+import android.view.ViewGroup
+import androidx.core.view.ViewCompat
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
@@ -212,6 +215,35 @@ class MainActivity : AppCompatActivity() {
                 )
             }
 
+            // Observe system status-bar visibility (incl. transient swipe bars).
+            // Some devices leave Compose areStatusBarsVisible / statusBars height at
+            // false/0 during BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE; WindowInsetsCompat
+            // isVisible is the reliable path recommended by the immersive guide.
+            // Spy view: do not replace Compose's OnApplyWindowInsetsListener on content.
+            var statusBarsVisibleCompat by remember { mutableStateOf(false) }
+            DisposableEffect(Unit) {
+                val content = findViewById<ViewGroup>(android.R.id.content)
+                val spy = View(this@MainActivity).apply {
+                    layoutParams = ViewGroup.LayoutParams(0, 0)
+                    importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+                }
+                content.addView(spy)
+                ViewCompat.setOnApplyWindowInsetsListener(spy) { _, insets ->
+                    statusBarsVisibleCompat =
+                        insets.isVisible(WindowInsetsCompat.Type.statusBars())
+                    insets
+                }
+                ViewCompat.getRootWindowInsets(content)?.let { root ->
+                    statusBarsVisibleCompat =
+                        root.isVisible(WindowInsetsCompat.Type.statusBars())
+                }
+                ViewCompat.requestApplyInsets(spy)
+                onDispose {
+                    ViewCompat.setOnApplyWindowInsetsListener(spy, null)
+                    content.removeView(spy)
+                }
+            }
+
             AlwaysCalendarTheme {
                 val closeSettings: () -> Unit = {
                     settingsBrightnessPreview = null
@@ -246,6 +278,7 @@ class MainActivity : AppCompatActivity() {
                             isCharging = battery.isCharging,
                             networkStatus = network,
                             holidayDates = holidayDates,
+                            statusBarsVisibleCompat = statusBarsVisibleCompat,
                             onEnsureMonth = { ym ->
                                 holidays.ensureMonth(ym.year, ym.monthValue)
                             },

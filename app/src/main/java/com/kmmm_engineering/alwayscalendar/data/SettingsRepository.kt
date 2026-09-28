@@ -29,9 +29,10 @@ class SettingsRepository(private val context: Context) {
         val firstRunHintSeen = booleanPreferencesKey("first_run_hint_seen")
         val weekStart = stringPreferencesKey("week_start")
         val misoperationLock = booleanPreferencesKey("misoperation_lock")
-        // debug013 temporary status-bar scrim tunables
+        // debug013/014 temporary status-bar scrim tunables
         val debugScrimOpacity = intPreferencesKey("debug_scrim_opacity")
         val debugScrimBlur = intPreferencesKey("debug_scrim_blur")
+        val debugScrimAlwaysShow = booleanPreferencesKey("debug_scrim_always_show")
         // Discord threshold-cross persistence
         val alertLastPercent = intPreferencesKey("alert_last_percent")
         val alertLastCharging = booleanPreferencesKey("alert_last_charging")
@@ -63,6 +64,7 @@ class SettingsRepository(private val context: Context) {
         debugScrimBlurDp = UserSettings.clampScrimBlur(
             prefs[Keys.debugScrimBlur] ?: UserSettings.DEBUG_SCRIM_BLUR_DEFAULT,
         ),
+        debugScrimAlwaysShow = prefs[Keys.debugScrimAlwaysShow] ?: false,
     )
 
     val settingsFlow: Flow<UserSettings> = context.dataStore.data.map { prefs ->
@@ -90,6 +92,7 @@ class SettingsRepository(private val context: Context) {
             prefs[Keys.misoperationLock] = next.misoperationLock
             prefs[Keys.debugScrimOpacity] = UserSettings.clampScrimOpacity(next.debugScrimOpacityPercent)
             prefs[Keys.debugScrimBlur] = UserSettings.clampScrimBlur(next.debugScrimBlurDp)
+            prefs[Keys.debugScrimAlwaysShow] = next.debugScrimAlwaysShow
         }
     }
 
@@ -108,6 +111,9 @@ class SettingsRepository(private val context: Context) {
     }
     suspend fun setDebugScrimBlur(v: Int) = update {
         it.copy(debugScrimBlurDp = UserSettings.clampScrimBlur(v))
+    }
+    suspend fun setDebugScrimAlwaysShow(v: Boolean) = update {
+        it.copy(debugScrimAlwaysShow = v)
     }
 
     suspend fun loadThresholdAlertSnapshot(): ThresholdAlertSnapshot {

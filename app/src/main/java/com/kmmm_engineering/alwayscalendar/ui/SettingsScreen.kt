@@ -221,6 +221,12 @@ fun SettingsScreen(
                     scope.launch { repository.setDiscordCharge(v) }
                 }
 
+                SwitchRow(
+                    label = stringResource(R.string.debug_scrim_always_show),
+                    checked = settings.debugScrimAlwaysShow,
+                    onCheckedChange = { v -> scope.launch { repository.setDebugScrimAlwaysShow(v) } },
+                )
+
                 SectionTitle(stringResource(R.string.debug_scrim_opacity))
                 DebugIntField(
                     value = settings.debugScrimOpacityPercent,

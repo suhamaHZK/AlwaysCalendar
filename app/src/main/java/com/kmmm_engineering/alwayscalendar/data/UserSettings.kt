@@ -12,9 +12,10 @@ enum class WeekStart { SUNDAY, MONDAY }
  * [firstRunHintSeen] is true after Settings has been opened at least once
  * (DataStore key: first_run_hint_seen).
  *
- * Temporary debug013 status-bar scrim tunables:
+ * Temporary status-bar scrim tunables (debug013/014):
  * - [debugScrimOpacityPercent] 0..100 (%), default 85 → alpha = value/100f
  * - [debugScrimBlurDp] 0..50 (dp), default 0
+ * - [debugScrimAlwaysShow] when true, draw scrim even if status bars appear hidden
  */
 data class UserSettings(
     val idleBrightness: Float = 0.10f,
@@ -29,6 +30,7 @@ data class UserSettings(
     val misoperationLock: Boolean = false,
     val debugScrimOpacityPercent: Int = DEBUG_SCRIM_OPACITY_DEFAULT,
     val debugScrimBlurDp: Int = DEBUG_SCRIM_BLUR_DEFAULT,
+    val debugScrimAlwaysShow: Boolean = false,
 ) {
     companion object {
         /** Tap-to-brighten duration on the calendar screen (Always Calendar: 60s). */

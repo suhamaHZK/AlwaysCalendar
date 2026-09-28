@@ -32,9 +32,9 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.statusBarsIgnoringVisibility
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
-import androidx.compose.foundation.layout.windowInsetsTopHeight
 import androidx.compose.material3.Text
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -162,6 +162,8 @@ fun CalendarScreen(
     onSingleTap: () -> Unit,
     onOpenSettings: () -> Unit,
     onUnlockSliderVisibilityChange: (Boolean) -> Unit = {},
+    /** From MainActivity: WindowInsetsCompat.isVisible(statusBars). */
+    statusBarsVisibleCompat: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
     var nowMs by remember { mutableLongStateOf(System.currentTimeMillis()) }
@@ -395,15 +397,28 @@ fun CalendarScreen(
         // Darken status-bar band while it is visible (incl. transient swipe show)
         // so clock/battery icons remain readable over calendar content. Does not
         // permanently reserve layout space — content still only pads for cutout.
+        // debug014: multi-path visibility + IgnoringVisibility height (24.dp fallback).
         // debug013: opacity/blur from settings (DataStore).
-        if (WindowInsets.areStatusBarsVisible) {
+        val density = LocalDensity.current
+        val statusBarsTopPx = WindowInsets.statusBars.getTop(density)
+        val ignoringTopPx = WindowInsets.statusBarsIgnoringVisibility.getTop(density)
+        val composeSaysVisible =
+            WindowInsets.areStatusBarsVisible || statusBarsTopPx > 0
+        val showScrim =
+            settings.debugScrimAlwaysShow || composeSaysVisible || statusBarsVisibleCompat
+        if (showScrim) {
+            val scrimHeight = if (ignoringTopPx > 0) {
+                with(density) { ignoringTopPx.toDp() }
+            } else {
+                24.dp
+            }
             StatusBarScrim(
                 opacityPercent = settings.debugScrimOpacityPercent,
                 blurDp = settings.debugScrimBlurDp,
                 modifier = Modifier
                     .align(Alignment.TopCenter)
                     .fillMaxWidth()
-                    .windowInsetsTopHeight(WindowInsets.statusBars),
+                    .height(scrimHeight),
             )
         }
 

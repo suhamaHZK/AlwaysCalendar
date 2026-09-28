@@ -31,6 +31,7 @@
     <string name="credits_holidays_jp">祝日データ: holidays-jp (MIT) — https://holidays-jp.github.io/</string>
     <string name="debug_scrim_opacity">[debug]不透明度設定(0～100の間で入力)</string>
     <string name="debug_scrim_blur">[debug]ぼかし設定(0～50の間で入力)</string>
+    <string name="debug_scrim_always_show">[debug]暗幕を常に表示</string>
     <string name="back">戻る</string>
     <string name="on">オン</string>
     <string name="off">オフ</string>
