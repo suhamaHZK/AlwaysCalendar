@@ -17,6 +17,9 @@ import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
+import android.graphics.RenderEffect as AndroidRenderEffect
+import android.graphics.Shader
+import android.os.Build
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -46,15 +49,21 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.SideEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.asComposeRenderEffect
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.layer.GraphicsLayer
+import androidx.compose.ui.graphics.layer.drawLayer
+import androidx.compose.ui.graphics.rememberGraphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
@@ -94,15 +103,17 @@ private fun usableWindowInsets(): WindowInsets = WindowInsets.displayCutout
  */
 
 /**
- * Status-bar scrim (debug015).
+ * Status-bar scrim (debug016).
  *
- * - Band: opaque black at [opacityPercent] for exactly [bandHeight] (status-bar height).
- * - "Blur" is a soft bottom feather only: when blurDp>0, add a vertical gradient
- *   (black@alpha → transparent) of height blurDp below the band. Raising blur lengthens
- *   the feather; the opaque band stays the same height (no RenderEffect/Modifier.blur).
+ * Band height stays exactly [bandHeight] (status-bar height) — never thickened by blur.
+ * - Blur: real Gaussian of the recorded [contentLayer] clipped to the band.
+ *   API 31+: [AndroidRenderEffect.createBlurEffect] (CLAMP). API 29–30: dark overlay only.
+ * - Opacity: solid black at alpha = opacityPercent/100 drawn on top of the blur (not itself blurred).
+ * Raising blur only increases the bleed radius; do not blur a solid black Box.
  */
 @Composable
 private fun StatusBarScrim(
+    contentLayer: GraphicsLayer,
     opacityPercent: Int,
     blurDp: Int,
     bandHeight: Dp,
@@ -111,31 +122,32 @@ private fun StatusBarScrim(
     val opacity = UserSettings.clampScrimOpacity(opacityPercent)
     val blur = UserSettings.clampScrimBlur(blurDp)
     val alpha = opacity / 100f
-    val featherHeight = blur.dp
+    val density = LocalDensity.current
+    val blurRadiusPx = with(density) { blur.dp.toPx() }
+    val canHardwareBlur = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
 
-    Column(modifier = modifier.fillMaxWidth()) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(bandHeight)
-                .background(Color.Black.copy(alpha = alpha)),
-        )
-        if (blur > 0) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(featherHeight)
-                    .background(
-                        Brush.verticalGradient(
-                            colors = listOf(
-                                Color.Black.copy(alpha = alpha),
-                                Color.Transparent,
-                            ),
-                        ),
-                    ),
-            )
-        }
-    }
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(bandHeight)
+            .clipToBounds()
+            .drawBehind {
+                if (blur > 0 && blurRadiusPx > 0f && canHardwareBlur) {
+                    contentLayer.renderEffect = AndroidRenderEffect
+                        .createBlurEffect(
+                            blurRadiusPx,
+                            blurRadiusPx,
+                            Shader.TileMode.CLAMP,
+                        )
+                        .asComposeRenderEffect()
+                    drawLayer(contentLayer)
+                    contentLayer.renderEffect = null
+                }
+                if (alpha > 0f) {
+                    drawRect(Color.Black.copy(alpha = alpha))
+                }
+            },
+    )
 }
 
 private val MonthStripGap = 3.dp
@@ -283,6 +295,9 @@ fun CalendarScreen(
         }
     }
 
+    // Recorded for status-bar Gaussian blur (month strip + StatusCluster).
+    val contentLayer = rememberGraphicsLayer()
+
     Box(
         modifier = modifier
             .fillMaxSize()
@@ -308,6 +323,18 @@ fun CalendarScreen(
                 )
             },
     ) {
+        // Blur source: draw via GraphicsLayer so the status-bar band can re-draw blurred.
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .drawWithContent {
+                    val contentDraw = this
+                    contentLayer.record {
+                        contentDraw.drawContent()
+                    }
+                    drawLayer(contentLayer)
+                },
+        ) {
         BoxWithConstraints(
             modifier = Modifier
                 .fillMaxSize()
@@ -403,8 +430,8 @@ fun CalendarScreen(
             }
         }
 
-        // Status (top-left) above the month strip. Drawn BEFORE the scrim so the
-        // dark band covers clock / battery / signal (debug015 z-order).
+        // Status (top-left) above the month strip. Inside the recorded layer so the
+        // scrim Gaussian blur + dark overlay cover clock / battery / signal too.
         StatusCluster(
             timeText = wallTime,
             batteryPercent = batteryPercent,
@@ -416,10 +443,11 @@ fun CalendarScreen(
                 .windowInsetsPadding(usableWindowInsets())
                 .padding(start = 12.dp, top = 6.dp),
         )
+        } // end blur-source Box
 
-        // Darken status-bar band while visible (incl. transient / edge-swipe).
-        // Height = statusBarsIgnoringVisibility (24.dp fallback); feather is extra below.
-        // debug015: animation + edge-swipe paths; opaque band + gradient feather (no blur).
+        // Darken + blur status-bar band while visible (incl. transient / edge-swipe).
+        // Height = statusBarsIgnoringVisibility (24.dp fallback); blur does not grow height.
+        // debug016: keep 015 show triggers; real Gaussian via recorded GraphicsLayer.
         val density = LocalDensity.current
         val statusBarsTopPx = WindowInsets.statusBars.getTop(density)
         val ignoringTopPx = WindowInsets.statusBarsIgnoringVisibility.getTop(density)
@@ -438,6 +466,7 @@ fun CalendarScreen(
                 24.dp
             }
             StatusBarScrim(
+                contentLayer = contentLayer,
                 opacityPercent = settings.debugScrimOpacityPercent,
                 blurDp = settings.debugScrimBlurDp,
                 bandHeight = scrimHeight,
