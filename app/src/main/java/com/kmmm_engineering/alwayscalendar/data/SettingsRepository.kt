@@ -29,10 +29,14 @@ class SettingsRepository(private val context: Context) {
         val firstRunHintSeen = booleanPreferencesKey("first_run_hint_seen")
         val weekStart = stringPreferencesKey("week_start")
         val misoperationLock = booleanPreferencesKey("misoperation_lock")
-        // debug013/014 temporary status-bar scrim tunables
-        val debugScrimOpacity = intPreferencesKey("debug_scrim_opacity")
-        val debugScrimBlur = intPreferencesKey("debug_scrim_blur")
-        val debugScrimAlwaysShow = booleanPreferencesKey("debug_scrim_always_show")
+        val fullscreenEnabled = booleanPreferencesKey("fullscreen_enabled")
+        val holidaysAsWhite = booleanPreferencesKey("holidays_as_white")
+        val saturdayAsWhite = booleanPreferencesKey("saturday_as_white")
+        val sundayAsWhite = booleanPreferencesKey("sunday_as_white")
+        val customHolidays = stringPreferencesKey("custom_holidays_json")
+        val customWeekdays = stringPreferencesKey("custom_weekdays_json")
+        // Legacy debug013/014/017 keys — intentionally unread (discard on migrate).
+        // debug_scrim_opacity / debug_scrim_blur / debug_scrim_always_show
         // Discord threshold-cross persistence
         val alertLastPercent = intPreferencesKey("alert_last_percent")
         val alertLastCharging = booleanPreferencesKey("alert_last_charging")
@@ -58,13 +62,12 @@ class SettingsRepository(private val context: Context) {
             runCatching { WeekStart.valueOf(it) }.getOrDefault(WeekStart.SUNDAY)
         } ?: WeekStart.SUNDAY,
         misoperationLock = prefs[Keys.misoperationLock] ?: false,
-        debugScrimOpacityPercent = UserSettings.clampScrimOpacity(
-            prefs[Keys.debugScrimOpacity] ?: UserSettings.DEBUG_SCRIM_OPACITY_DEFAULT,
-        ),
-        debugScrimBlurDp = UserSettings.clampScrimBlur(
-            prefs[Keys.debugScrimBlur] ?: UserSettings.DEBUG_SCRIM_BLUR_DEFAULT,
-        ),
-        debugScrimAlwaysShow = prefs[Keys.debugScrimAlwaysShow] ?: false,
+        fullscreenEnabled = prefs[Keys.fullscreenEnabled] ?: false,
+        holidaysAsWhite = prefs[Keys.holidaysAsWhite] ?: false,
+        saturdayAsWhite = prefs[Keys.saturdayAsWhite] ?: false,
+        sundayAsWhite = prefs[Keys.sundayAsWhite] ?: false,
+        customHolidays = CustomDayRule.decodeList(prefs[Keys.customHolidays]),
+        customWeekdays = CustomDayRule.decodeList(prefs[Keys.customWeekdays]),
     )
 
     val settingsFlow: Flow<UserSettings> = context.dataStore.data.map { prefs ->
@@ -90,9 +93,16 @@ class SettingsRepository(private val context: Context) {
             prefs[Keys.firstRunHintSeen] = next.firstRunHintSeen
             prefs[Keys.weekStart] = next.weekStart.name
             prefs[Keys.misoperationLock] = next.misoperationLock
-            prefs[Keys.debugScrimOpacity] = UserSettings.clampScrimOpacity(next.debugScrimOpacityPercent)
-            prefs[Keys.debugScrimBlur] = UserSettings.clampScrimBlur(next.debugScrimBlurDp)
-            prefs[Keys.debugScrimAlwaysShow] = next.debugScrimAlwaysShow
+            prefs[Keys.fullscreenEnabled] = next.fullscreenEnabled
+            prefs[Keys.holidaysAsWhite] = next.holidaysAsWhite
+            prefs[Keys.saturdayAsWhite] = next.saturdayAsWhite
+            prefs[Keys.sundayAsWhite] = next.sundayAsWhite
+            prefs[Keys.customHolidays] = CustomDayRule.encodeList(next.customHolidays)
+            prefs[Keys.customWeekdays] = CustomDayRule.encodeList(next.customWeekdays)
+            // Drop legacy debug scrim keys if present (read-discard migration).
+            prefs.remove(booleanPreferencesKey("debug_scrim_always_show"))
+            prefs.remove(intPreferencesKey("debug_scrim_opacity"))
+            prefs.remove(intPreferencesKey("debug_scrim_blur"))
         }
     }
 
@@ -106,14 +116,22 @@ class SettingsRepository(private val context: Context) {
     suspend fun markFirstRunHintSeen() = update { it.copy(firstRunHintSeen = true) }
     suspend fun setWeekStart(v: WeekStart) = update { it.copy(weekStart = v) }
     suspend fun setMisoperationLock(v: Boolean) = update { it.copy(misoperationLock = v) }
-    suspend fun setDebugScrimOpacity(v: Int) = update {
-        it.copy(debugScrimOpacityPercent = UserSettings.clampScrimOpacity(v))
+    suspend fun setFullscreenEnabled(v: Boolean) = update { it.copy(fullscreenEnabled = v) }
+    suspend fun setHolidaysAsWhite(v: Boolean) = update { it.copy(holidaysAsWhite = v) }
+    suspend fun setSaturdayAsWhite(v: Boolean) = update { it.copy(saturdayAsWhite = v) }
+    suspend fun setSundayAsWhite(v: Boolean) = update { it.copy(sundayAsWhite = v) }
+
+    suspend fun addCustomHoliday(rule: CustomDayRule) = update {
+        it.copy(customHolidays = it.customHolidays + rule)
     }
-    suspend fun setDebugScrimBlur(v: Int) = update {
-        it.copy(debugScrimBlurDp = UserSettings.clampScrimBlur(v))
+    suspend fun removeCustomHoliday(id: String) = update {
+        it.copy(customHolidays = it.customHolidays.filterNot { r -> r.id == id })
     }
-    suspend fun setDebugScrimAlwaysShow(v: Boolean) = update {
-        it.copy(debugScrimAlwaysShow = v)
+    suspend fun addCustomWeekday(rule: CustomDayRule) = update {
+        it.copy(customWeekdays = it.customWeekdays + rule)
+    }
+    suspend fun removeCustomWeekday(id: String) = update {
+        it.copy(customWeekdays = it.customWeekdays.filterNot { r -> r.id == id })
     }
 
     suspend fun loadThresholdAlertSnapshot(): ThresholdAlertSnapshot {

@@ -29,6 +29,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.kmmm_engineering.alwayscalendar.data.CustomDayRule
 import com.kmmm_engineering.alwayscalendar.data.WeekStart
 import java.time.DayOfWeek
 import java.time.LocalDate
@@ -38,13 +39,45 @@ import java.util.Locale
 import kotlin.math.max
 import kotlin.math.roundToInt
 
-private val ColorSunday = Color(0xFFFF5555)
-private val ColorSaturday = Color(0xFF5599FF)
-private val ColorWeekday = Color.White
+internal val ColorSunday = Color(0xFFFF5555)
+internal val ColorSaturday = Color(0xFF5599FF)
+internal val ColorWeekday = Color.White
 private val ColorTodayBorder = Color.White
 
 private val WeekdayLabelsSunStart = listOf("日", "月", "火", "水", "木", "金", "土")
 private val WeekdayLabelsMonStart = listOf("月", "火", "水", "木", "金", "土", "日")
+
+/**
+ * Day-color options from settings (priority applied inside [resolveDayNumeralColor]).
+ */
+data class DayColorOptions(
+    val holidaysAsWhite: Boolean = false,
+    val saturdayAsWhite: Boolean = false,
+    val sundayAsWhite: Boolean = false,
+    val customHolidays: List<CustomDayRule> = emptyList(),
+    val customWeekdays: List<CustomDayRule> = emptyList(),
+)
+
+/**
+ * Priority: custom weekday (白) ＞ custom holiday (赤) ＞ white-switches ＞ default
+ * (祝日・日曜赤、土曜青、他白). When holidaysAsWhite, API/cache holidays ignored.
+ */
+fun resolveDayNumeralColor(
+    date: LocalDate,
+    isApiHoliday: Boolean,
+    options: DayColorOptions,
+): Color {
+    if (options.customWeekdays.any { it.matches(date) }) return ColorWeekday
+    if (options.customHolidays.any { it.matches(date) }) return ColorSunday
+    val treatHoliday = !options.holidaysAsWhite && isApiHoliday
+    val dow = date.dayOfWeek
+    return when {
+        treatHoliday -> ColorSunday
+        dow == DayOfWeek.SUNDAY -> if (options.sundayAsWhite) ColorWeekday else ColorSunday
+        dow == DayOfWeek.SATURDAY -> if (options.saturdayAsWhite) ColorWeekday else ColorSaturday
+        else -> ColorWeekday
+    }
+}
 
 /**
  * Single-month calendar block: header (year / month# / English name), weekday row, date grid.
@@ -60,6 +93,7 @@ fun MonthCalendar(
     weekStart: WeekStart,
     today: LocalDate,
     isHoliday: (LocalDate) -> Boolean,
+    colorOptions: DayColorOptions = DayColorOptions(),
     modifier: Modifier = Modifier,
 ) {
     val yearSp = 11.sp
@@ -118,7 +152,12 @@ fun MonthCalendar(
             labels.forEachIndexed { index, label ->
                 Text(
                     text = label,
-                    color = weekdayLabelColor(index, weekStart),
+                    color = weekdayLabelColor(
+                        index,
+                        weekStart,
+                        colorOptions.saturdayAsWhite,
+                        colorOptions.sundayAsWhite,
+                    ),
                     fontSize = weekdaySp,
                     textAlign = TextAlign.Center,
                     modifier = Modifier.weight(1f),
@@ -127,9 +166,6 @@ fun MonthCalendar(
         }
         Spacer(Modifier.height(gridGap))
 
-        // 6 equal rows fill the remaining square area (no fixed cell aspect).
-        // Day font size is derived once from cell short side (≈90%) using "00" probe
-        // so every date in the month shares the same sp (1-digit and 2-digit alike).
         BoxWithConstraints(modifier = Modifier.weight(1f).fillMaxWidth()) {
             val cellShortSide = minOf(maxWidth / 7f, maxHeight / 6f)
             val daySp = dayNumberFontSize(cellShortSide)
@@ -145,6 +181,7 @@ fun MonthCalendar(
                                 cell = cell,
                                 today = today,
                                 isHoliday = isHoliday,
+                                colorOptions = colorOptions,
                                 daySp = daySp,
                                 modifier = Modifier
                                     .weight(1f)
@@ -158,11 +195,6 @@ fun MonthCalendar(
     }
 }
 
-/**
- * Font size for day numerals: ~90% of the day-cell short side, sized so the probe
- * string "00" (two max-width digits) fits that target. Same [TextUnit] for every
- * date in the month — never scale per digit count.
- */
 @Composable
 private fun dayNumberFontSize(cellShortSide: Dp): TextUnit {
     val density = LocalDensity.current
@@ -187,12 +219,12 @@ private fun DayCell(
     cell: MonthCell,
     today: LocalDate,
     isHoliday: (LocalDate) -> Boolean,
+    colorOptions: DayColorOptions,
     daySp: TextUnit,
     modifier: Modifier = Modifier,
 ) {
     val date = cell.date
     val isToday = date != null && date == today
-    // Today: rounded border around the whole grid cell (not around the digits alone).
     Box(
         modifier = modifier.then(
             if (isToday) {
@@ -208,8 +240,7 @@ private fun DayCell(
         contentAlignment = Alignment.Center,
     ) {
         if (date == null) return@Box
-        val holiday = isHoliday(date)
-        val color = dayColor(date.dayOfWeek, holiday)
+        val color = resolveDayNumeralColor(date, isHoliday(date), colorOptions)
         Text(
             text = date.dayOfMonth.toString(),
             color = color,
@@ -222,23 +253,26 @@ private fun DayCell(
     }
 }
 
-private fun weekdayLabelColor(index: Int, weekStart: WeekStart): Color = when (weekStart) {
-    WeekStart.SUNDAY -> when (index) {
-        0 -> ColorSunday
-        6 -> ColorSaturday
-        else -> ColorWeekday
+private fun weekdayLabelColor(
+    index: Int,
+    weekStart: WeekStart,
+    saturdayAsWhite: Boolean,
+    sundayAsWhite: Boolean,
+): Color {
+    val sunday = if (sundayAsWhite) ColorWeekday else ColorSunday
+    val saturday = if (saturdayAsWhite) ColorWeekday else ColorSaturday
+    return when (weekStart) {
+        WeekStart.SUNDAY -> when (index) {
+            0 -> sunday
+            6 -> saturday
+            else -> ColorWeekday
+        }
+        WeekStart.MONDAY -> when (index) {
+            5 -> saturday
+            6 -> sunday
+            else -> ColorWeekday
+        }
     }
-    WeekStart.MONDAY -> when (index) {
-        5 -> ColorSaturday
-        6 -> ColorSunday
-        else -> ColorWeekday
-    }
-}
-
-private fun dayColor(dow: DayOfWeek, holiday: Boolean): Color = when {
-    holiday || dow == DayOfWeek.SUNDAY -> ColorSunday
-    dow == DayOfWeek.SATURDAY -> ColorSaturday
-    else -> ColorWeekday
 }
 
 private data class MonthCell(val date: LocalDate?)
@@ -248,8 +282,8 @@ private fun buildMonthCells(yearMonth: YearMonth, weekStart: WeekStart): List<Mo
     val length = yearMonth.lengthOfMonth()
     val firstDow = first.dayOfWeek
     val offset = when (weekStart) {
-        WeekStart.SUNDAY -> firstDow.value % 7 // Sun=0 … Sat=6
-        WeekStart.MONDAY -> (firstDow.value + 6) % 7 // Mon=0 … Sun=6
+        WeekStart.SUNDAY -> firstDow.value % 7
+        WeekStart.MONDAY -> (firstDow.value + 6) % 7
     }
     val cells = mutableListOf<MonthCell>()
     repeat(offset) { cells.add(MonthCell(null)) }
@@ -261,10 +295,6 @@ private fun buildMonthCells(yearMonth: YearMonth, weekStart: WeekStart): List<Mo
     return cells
 }
 
-/**
- * Uniform visual scale that also shrinks layout bounds (packing uses visual size).
- * Never applies non-uniform scaleY alone.
- */
 fun Modifier.uniformScale(scale: Float): Modifier {
     if (scale == 1f) return this
     val s = scale.coerceAtLeast(0.01f)
@@ -282,40 +312,20 @@ fun Modifier.uniformScale(scale: Float): Modifier {
     }
 }
 
-/**
- * Intrinsic height of [MonthCalendar] at [width]: always equal to [width] (1:1 square).
- */
 fun estimateMonthHeight(width: Dp): Dp = width
 
-/**
- * Clamp usable aspect (height/width) into the design range for **portrait screen letterboxing**:
- * more square than 4:3 → treat as 4:3; taller than 21:9 → treat as 21:9.
- * Individual month blocks themselves are always 1:1 regardless of this clamp.
- */
 fun designAspectHeightOverWidth(rawHeightOverWidth: Float): Float =
     rawHeightOverWidth.coerceIn(4f / 3f, 21f / 9f)
 
-/**
- * Clamp usable aspect (width/height) into the design range for **landscape screen letterboxing**
- * (mirror of [designAspectHeightOverWidth]):
- * more square than 4:3 → treat as 4:3 (width:height); wider than 21:9 → treat as 21:9.
- * Individual month blocks themselves are always 1:1 regardless of this clamp.
- */
 fun designAspectWidthOverHeight(rawWidthOverHeight: Float): Float =
     rawWidthOverHeight.coerceIn(4f / 3f, 21f / 9f)
 
-/**
- * Interpolate uniform scale by distance from focused month (0 = center).
- * At rest (distance == 1) scale must equal [sideScale] — packing allocates side
- * slots with that height. Beyond 1 (peek of ±2 during fling) ease down to 50%.
- */
 fun monthScaleForDistance(distance: Float, centerScale: Float, sideScale: Float): Float {
     val d = distance.coerceIn(0f, 1.5f)
     return when {
         d <= 0f -> centerScale
         d <= 1f -> centerScale + (sideScale - centerScale) * d
         else -> {
-            // d in (1, 1.5]: sideScale → sideScale * 0.5
             val far = ((d - 1f) / 0.5f).coerceIn(0f, 1f)
             sideScale * (1f - 0.5f * far)
         }

@@ -15,11 +15,11 @@ android {
         minSdk = 29
         targetSdk = 36
         versionCode = 1
-        versionName = "0.0.1"
+        versionName = "0.0.2"
 
-        // Sideload / debug: APP_DEBUG="001" → settings shows "0.0.1 debug001".
-        // Store AAB: pass -PappDebug= (empty) so display is "ver.0.0.1".
-        val appDebug = (findProperty("appDebug") as String?)?.trim() ?: "017"
+        // Sideload / debug: APP_DEBUG="001" → settings shows "0.0.2 debug001".
+        // Store AAB: pass -PappDebug= (empty) so display is "ver.0.0.2".
+        val appDebug = (findProperty("appDebug") as String?)?.trim() ?: "001"
         buildConfigField("String", "APP_DEBUG", "\"$appDebug\"")
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"

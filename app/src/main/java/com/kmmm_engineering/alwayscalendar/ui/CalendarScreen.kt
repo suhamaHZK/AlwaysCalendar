@@ -4,7 +4,6 @@ package com.kmmm_engineering.alwayscalendar.ui
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.runtime.Composable
 
-import android.content.res.Configuration
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
@@ -22,6 +21,8 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.areStatusBarsVisible
+import androidx.compose.foundation.layout.systemBars
+import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.displayCutout
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
@@ -56,12 +57,12 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
@@ -79,10 +80,19 @@ import kotlin.math.abs
 import kotlin.math.roundToInt
 import kotlin.random.Random
 
-/** Usable-area insets: display cutout / punch-hole only (no permanent status-bar reserve). */
+/**
+ * Usable-area insets.
+ * Fullscreen ON: display cutout only (immersive; system bars transient).
+ * Fullscreen OFF: systemBars + displayCutout (status/nav always reserved).
+ */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun usableWindowInsets(): WindowInsets = WindowInsets.displayCutout
+private fun usableWindowInsets(fullscreen: Boolean): WindowInsets =
+    if (fullscreen) {
+        WindowInsets.displayCutout
+    } else {
+        WindowInsets.systemBars.union(WindowInsets.displayCutout)
+    }
 
 /**
  * Status cluster sits in the top-left corner overlay; cutout is already excluded via
@@ -97,17 +107,15 @@ private fun usableWindowInsets(): WindowInsets = WindowInsets.displayCutout
  * Status-bar scrim (debug017).
  *
  * Band height = [bandHeight] (statusBarsIgnoringVisibility, 24.dp fallback).
- * Solid black at alpha = opacityPercent/100 only — no blur / feather / GraphicsLayer.
+ * Solid black at fixed 85% alpha only — no blur / feather / GraphicsLayer.
  * Drawn above [StatusCluster] so clock/battery/signal sit under the dark band.
  */
 @Composable
 private fun StatusBarScrim(
-    opacityPercent: Int,
     bandHeight: Dp,
     modifier: Modifier = Modifier,
 ) {
-    val opacity = UserSettings.clampScrimOpacity(opacityPercent)
-    val alpha = opacity / 100f
+    val alpha = UserSettings.SCRIM_OPACITY_PERCENT / 100f
     Box(
         modifier = modifier
             .fillMaxWidth()
@@ -146,13 +154,25 @@ fun CalendarScreen(
     var lostUserHintUntil by remember { mutableLongStateOf(0L) }
     var shiftX by remember { mutableIntStateOf(0) }
     var shiftY by remember { mutableIntStateOf(0) }
-    val configuration = LocalConfiguration.current
-    // Strip direction follows Configuration.orientation (not usable-area aspect after cutout).
-    // Android reports ORIENTATION_LANDSCAPE only when screen width > height; when
-    // width == height (exact square) it is ORIENTATION_PORTRAIT → vertical strip
-    // (prev/next above/below). Prefer portrait stack on the equality side.
-    val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+    // Orientation from usable W/H (Configuration.orientation banned): H>=W → portrait.
+    var isLandscape by remember { mutableStateOf(false) }
     var landscapeStatusSingleLine by remember { mutableStateOf(false) }
+    val fullscreen = settings.fullscreenEnabled
+    val colorOptions = remember(
+        settings.holidaysAsWhite,
+        settings.saturdayAsWhite,
+        settings.sundayAsWhite,
+        settings.customHolidays,
+        settings.customWeekdays,
+    ) {
+        DayColorOptions(
+            holidaysAsWhite = settings.holidaysAsWhite,
+            saturdayAsWhite = settings.saturdayAsWhite,
+            sundayAsWhite = settings.sundayAsWhite,
+            customHolidays = settings.customHolidays,
+            customWeekdays = settings.customWeekdays,
+        )
+    }
     // debug017: peripheral edge-swipe fallback when transient insets never report visible.
     var systemBarsGestureShowing by remember { mutableStateOf(false) }
     var systemBarsGestureHideToken by remember { mutableLongStateOf(0L) }
@@ -261,6 +281,25 @@ fun CalendarScreen(
         }
     }
 
+    fun goToCurrentMonth() {
+        if (settings.misoperationLock) return
+        val target = YearMonth.now()
+        val delta = (target.year * 12L + target.monthValue) -
+            (centerMonth.year * 12L + centerMonth.monthValue)
+        when {
+            delta == 0L -> Unit
+            kotlin.math.abs(delta) == 1L -> animateToMonthDelta(delta)
+            else -> {
+                // Multi-month jump: snap (existing ±1 animation only covers neighbors).
+                scope.launch {
+                    dragPage = 0f
+                    scrollPage.snapTo(0f)
+                    centerMonth = target
+                }
+            }
+        }
+    }
+
     Box(
         modifier = modifier
             .fillMaxSize()
@@ -289,7 +328,7 @@ fun CalendarScreen(
         BoxWithConstraints(
             modifier = Modifier
                 .fillMaxSize()
-                .windowInsetsPadding(usableWindowInsets())
+                .windowInsetsPadding(usableWindowInsets(fullscreen))
                 .offset { IntOffset(shiftX, shiftY) }
                 .padding(horizontal = 12.dp, vertical = 6.dp)
                 .then(
@@ -338,21 +377,23 @@ fun CalendarScreen(
                     },
                 ),
         ) {
+            // Orientation: usable H>=W → portrait (incl. 1:1); W>H → landscape.
+            val landscapeNow = maxWidth > maxHeight
+            SideEffect { isLandscape = landscapeNow }
+
             // Center-first: maximize current month, then size prev/next from remaining margins.
-            // Square usable area (maxWidth ≈ maxHeight) still uses portrait when
-            // Configuration says portrait (equality → not LANDSCAPE). See isLandscape above.
-            val (centerScale, sideScale) = if (isLandscape) {
+            val (centerScale, sideScale) = if (landscapeNow) {
                 fitMonthScalesLandscape(maxWidth, maxHeight)
             } else {
                 fitMonthScalesPortrait(maxWidth, maxHeight)
             }
 
             // Landscape: if stacked status would intersect left (or center) month, use 1-line.
-            val statusSingleLine = isLandscape &&
+            val statusSingleLine = landscapeNow &&
                 statusOverlapsMonthLandscape(maxWidth, maxHeight, centerScale, sideScale)
             SideEffect { landscapeStatusSingleLine = statusSingleLine }
 
-            if (isLandscape) {
+            if (landscapeNow) {
                 MonthStripLandscape(
                     centerMonth = centerMonth,
                     scroll = liveScroll,
@@ -361,6 +402,7 @@ fun CalendarScreen(
                     weekStart = settings.weekStart,
                     today = today,
                     isHoliday = isHoliday,
+                    colorOptions = colorOptions,
                     misoperationLock = settings.misoperationLock,
                     onSelectDelta = { animateToMonthDelta(it) },
                     modifier = Modifier.fillMaxSize(),
@@ -374,6 +416,7 @@ fun CalendarScreen(
                     weekStart = settings.weekStart,
                     today = today,
                     isHoliday = isHoliday,
+                    colorOptions = colorOptions,
                     misoperationLock = settings.misoperationLock,
                     onSelectDelta = { animateToMonthDelta(it) },
                     modifier = Modifier.fillMaxSize(),
@@ -381,52 +424,53 @@ fun CalendarScreen(
             }
         }
 
-        // Status (top-left) above the month strip; scrim draws above this cluster.
-        StatusCluster(
-            timeText = wallTime,
-            batteryPercent = batteryPercent,
-            isCharging = isCharging,
-            networkStatus = networkStatus,
-            singleLine = landscapeStatusSingleLine,
-            modifier = Modifier
-                .align(Alignment.TopStart)
-                .windowInsetsPadding(usableWindowInsets())
-                .padding(start = 12.dp, top = 6.dp),
-        )
-
-        // Darken status-bar band while visible (incl. transient / peripheral edge-swipe).
-        // Height = statusBarsIgnoringVisibility (24.dp fallback); black alpha only.
-        // showScrim = always || composeVisible || compat || transientAnim || systemBarsGestureShowing
-        val density = LocalDensity.current
-        val statusBarsTopPx = WindowInsets.statusBars.getTop(density)
-        val ignoringTopPx = WindowInsets.statusBarsIgnoringVisibility.getTop(density)
-        val composeSaysVisible =
-            WindowInsets.areStatusBarsVisible || statusBarsTopPx > 0
-        val showScrim =
-            settings.debugScrimAlwaysShow ||
-                composeSaysVisible ||
-                statusBarsVisibleCompat ||
-                statusBarsTransientShowing ||
-                systemBarsGestureShowing
-        if (showScrim) {
-            val scrimHeight = if (ignoringTopPx > 0) {
-                with(density) { ignoringTopPx.toDp() }
-            } else {
-                24.dp
-            }
-            StatusBarScrim(
-                opacityPercent = settings.debugScrimOpacityPercent,
-                bandHeight = scrimHeight,
+        // Status (top-left) only in fullscreen; OFF keeps system status bar visible instead.
+        if (fullscreen) {
+            StatusCluster(
+                timeText = wallTime,
+                batteryPercent = batteryPercent,
+                isCharging = isCharging,
+                networkStatus = networkStatus,
+                singleLine = landscapeStatusSingleLine,
                 modifier = Modifier
-                    .align(Alignment.TopCenter)
-                    .fillMaxWidth(),
+                    .align(Alignment.TopStart)
+                    .windowInsetsPadding(usableWindowInsets(fullscreen))
+                    .padding(start = 12.dp, top = 6.dp),
             )
+        }
+
+        // Scrim only when fullscreen ON (017 detect). Opacity fixed 85%.
+        if (fullscreen) {
+            val density = LocalDensity.current
+            val statusBarsTopPx = WindowInsets.statusBars.getTop(density)
+            val ignoringTopPx = WindowInsets.statusBarsIgnoringVisibility.getTop(density)
+            val composeSaysVisible =
+                WindowInsets.areStatusBarsVisible || statusBarsTopPx > 0
+            val showScrim =
+                composeSaysVisible ||
+                    statusBarsVisibleCompat ||
+                    statusBarsTransientShowing ||
+                    systemBarsGestureShowing
+            if (showScrim) {
+                val scrimHeight = if (ignoringTopPx > 0) {
+                    with(density) { ignoringTopPx.toDp() }
+                } else {
+                    24.dp
+                }
+                StatusBarScrim(
+                    bandHeight = scrimHeight,
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .fillMaxWidth(),
+                )
+            }
         }
 
         // Peripheral edge swipes (top/left/right/bottom ~40dp) → show scrim briefly when
         // system transient insets never flip visible. Inward short drags only so month
         // scroll in the center is unaffected. Skip when always-on (scrim already up).
-        if (!settings.debugScrimAlwaysShow) {
+        // Peripheral edge swipes → scrim briefly (fullscreen immersive only).
+        if (fullscreen) {
             val edgeZone = 40.dp
             val minInwardPx = 4f
             fun markSystemBarsGesture() {
@@ -502,6 +546,27 @@ fun CalendarScreen(
             )
         }
 
+        // 「今月」— bottom-left usable; hidden under misoperation lock.
+        if (!settings.misoperationLock) {
+            val thisMonthLabel = if (isLandscape) "今月" else "今\n月"
+            Text(
+                text = thisMonthLabel,
+                color = Color(0xFFCCCCCC),
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Medium,
+                textAlign = TextAlign.Center,
+                lineHeight = 18.sp,
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .windowInsetsPadding(usableWindowInsets(fullscreen))
+                    .padding(start = 16.dp, bottom = 16.dp)
+                    .clickable {
+                        onSingleTap()
+                        goToCurrentMonth()
+                    },
+            )
+        }
+
         val showPersistentHint = !settings.firstRunHintSeen && !showSlider
         val showLostUserHint = !showSlider && lostUserHintUntil > System.currentTimeMillis()
         if (showPersistentHint || showLostUserHint) {
@@ -511,7 +576,7 @@ fun CalendarScreen(
                 fontSize = 14.sp,
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
-                    .windowInsetsPadding(usableWindowInsets())
+                    .windowInsetsPadding(usableWindowInsets(fullscreen))
                     .padding(bottom = 48.dp),
             )
         }
@@ -524,7 +589,7 @@ fun CalendarScreen(
                 },
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
-                    .windowInsetsPadding(usableWindowInsets())
+                    .windowInsetsPadding(usableWindowInsets(fullscreen))
                     .padding(horizontal = 32.dp, vertical = 40.dp)
                     .fillMaxWidth(if (isLandscape) 0.5f else 1f),
             )
@@ -546,6 +611,7 @@ private fun MonthStripPortrait(
     weekStart: WeekStart,
     today: LocalDate,
     isHoliday: (LocalDate) -> Boolean,
+    colorOptions: DayColorOptions,
     misoperationLock: Boolean,
     onSelectDelta: (Long) -> Unit,
     modifier: Modifier = Modifier,
@@ -616,6 +682,7 @@ private fun MonthStripPortrait(
                         weekStart = weekStart,
                         today = today,
                         isHoliday = isHoliday,
+                        colorOptions = colorOptions,
                         modifier = Modifier.width(baseW),
                     )
                 }
@@ -633,6 +700,7 @@ private fun MonthStripLandscape(
     weekStart: WeekStart,
     today: LocalDate,
     isHoliday: (LocalDate) -> Boolean,
+    colorOptions: DayColorOptions,
     misoperationLock: Boolean,
     onSelectDelta: (Long) -> Unit,
     modifier: Modifier = Modifier,
@@ -701,6 +769,7 @@ private fun MonthStripLandscape(
                         weekStart = weekStart,
                         today = today,
                         isHoliday = isHoliday,
+                        colorOptions = colorOptions,
                         modifier = Modifier.width(baseW),
                     )
                 }

@@ -12,10 +12,8 @@ enum class WeekStart { SUNDAY, MONDAY }
  * [firstRunHintSeen] is true after Settings has been opened at least once
  * (DataStore key: first_run_hint_seen).
  *
- * Temporary status-bar scrim tunables (debug013/017):
- * - [debugScrimOpacityPercent] 0..100 (%), default 85 → black overlay alpha = value/100f
- * - [debugScrimBlurDp] legacy DataStore read-discard (blur UI/draw removed in 017)
- * - [debugScrimAlwaysShow] when true, draw scrim even if status bars appear hidden
+ * Status-bar scrim opacity is fixed at [SCRIM_OPACITY_PERCENT] (85%);
+ * legacy debug opacity/blur/always-show keys are read-discarded.
  */
 data class UserSettings(
     val idleBrightness: Float = 0.10f,
@@ -28,10 +26,14 @@ data class UserSettings(
     val firstRunHintSeen: Boolean = false,
     val weekStart: WeekStart = WeekStart.SUNDAY,
     val misoperationLock: Boolean = false,
-    val debugScrimOpacityPercent: Int = DEBUG_SCRIM_OPACITY_DEFAULT,
-    /** @deprecated blur removed in debug017; kept for DataStore compatibility. */
-    val debugScrimBlurDp: Int = DEBUG_SCRIM_BLUR_DEFAULT,
-    val debugScrimAlwaysShow: Boolean = false,
+    /** Immersive fullscreen (hide system bars). Default OFF. */
+    val fullscreenEnabled: Boolean = false,
+    /** 祝日を白で表示 — stop holiday API; ignore cache for color. */
+    val holidaysAsWhite: Boolean = false,
+    val saturdayAsWhite: Boolean = false,
+    val sundayAsWhite: Boolean = false,
+    val customHolidays: List<CustomDayRule> = emptyList(),
+    val customWeekdays: List<CustomDayRule> = emptyList(),
 ) {
     companion object {
         /** Tap-to-brighten duration on the calendar screen (Always Calendar: 60s). */
@@ -41,20 +43,7 @@ data class UserSettings(
         const val IDLE_BRIGHTNESS_MAX = 0.35f
         const val IDLE_BRIGHTNESS_DEFAULT = 0.10f
 
-        /** debug013: status-bar scrim opacity (%). */
-        const val DEBUG_SCRIM_OPACITY_MIN = 0
-        const val DEBUG_SCRIM_OPACITY_MAX = 100
-        const val DEBUG_SCRIM_OPACITY_DEFAULT = 85
-
-        /** Legacy blur radius (dp); unused since debug017. */
-        const val DEBUG_SCRIM_BLUR_MIN = 0
-        const val DEBUG_SCRIM_BLUR_MAX = 50
-        const val DEBUG_SCRIM_BLUR_DEFAULT = 0
-
-        fun clampScrimOpacity(v: Int): Int =
-            v.coerceIn(DEBUG_SCRIM_OPACITY_MIN, DEBUG_SCRIM_OPACITY_MAX)
-
-        fun clampScrimBlur(v: Int): Int =
-            v.coerceIn(DEBUG_SCRIM_BLUR_MIN, DEBUG_SCRIM_BLUR_MAX)
+        /** Fixed status-bar scrim opacity (%). */
+        const val SCRIM_OPACITY_PERCENT = 85
     }
 }

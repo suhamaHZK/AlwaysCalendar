@@ -1,8 +1,8 @@
 package com.kmmm_engineering.alwayscalendar.ui
 
-import android.content.res.Configuration
 import android.widget.Toast
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -11,8 +11,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.text.KeyboardActions
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -40,15 +38,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
-import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import com.kmmm_engineering.alwayscalendar.BuildConfig
 import com.kmmm_engineering.alwayscalendar.R
@@ -101,155 +94,180 @@ fun SettingsScreen(
             )
         },
     ) { padding ->
-        val isLandscape =
-            LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
-        Column(
+        BoxWithConstraints(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(padding)
-                .verticalScroll(rememberScrollState()),
-            horizontalAlignment = Alignment.CenterHorizontally,
+                .padding(padding),
         ) {
+            // Usable W/H (not Configuration.orientation): W>H → landscape column width.
+            val isLandscape = maxWidth > maxHeight
             Column(
                 modifier = Modifier
-                    .fillMaxWidth(if (isLandscape) 0.8f else 1f)
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
+                    .fillMaxSize()
+                    .verticalScroll(rememberScrollState()),
+                horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-                SectionTitle(stringResource(R.string.idle_brightness))
-                Text(
-                    text = "%.0f%%".format(settings.idleBrightness * 100),
-                    color = Color(0xFFAAAAAA),
-                )
-                Slider(
-                    value = settings.idleBrightness,
-                    onValueChange = { v ->
-                        onIdleBrightnessPreview(v)
-                        scope.launch { repository.setIdleBrightness(v) }
-                    },
-                    onValueChangeFinished = { onIdleBrightnessPreview(null) },
-                    valueRange = UserSettings.IDLE_BRIGHTNESS_MIN..UserSettings.IDLE_BRIGHTNESS_MAX,
-                )
-
-                SectionTitle(stringResource(R.string.force_landscape))
-                ChipRow {
-                    SettingChip(
-                        stringResource(R.string.landscape_off),
-                        settings.landscapeMode == LandscapeMode.OFF,
-                    ) { scope.launch { repository.setLandscape(LandscapeMode.OFF) } }
-                    SettingChip(
-                        stringResource(R.string.landscape_right),
-                        settings.landscapeMode == LandscapeMode.RIGHT,
-                    ) { scope.launch { repository.setLandscape(LandscapeMode.RIGHT) } }
-                    SettingChip(
-                        stringResource(R.string.landscape_left),
-                        settings.landscapeMode == LandscapeMode.LEFT,
-                    ) { scope.launch { repository.setLandscape(LandscapeMode.LEFT) } }
-                }
-
-                SectionTitle(stringResource(R.string.week_start))
-                ChipRow {
-                    SettingChip(
-                        stringResource(R.string.week_start_sunday),
-                        settings.weekStart == WeekStart.SUNDAY,
-                    ) { scope.launch { repository.setWeekStart(WeekStart.SUNDAY) } }
-                    SettingChip(
-                        stringResource(R.string.week_start_monday),
-                        settings.weekStart == WeekStart.MONDAY,
-                    ) { scope.launch { repository.setWeekStart(WeekStart.MONDAY) } }
-                }
-
-                SwitchRow(
-                    label = stringResource(R.string.misoperation_lock),
-                    checked = settings.misoperationLock,
-                    onCheckedChange = { v -> scope.launch { repository.setMisoperationLock(v) } },
-                )
-                SwitchRow(
-                    label = stringResource(R.string.exit_on_unplug),
-                    checked = settings.exitOnUnplug,
-                    onCheckedChange = { v -> scope.launch { repository.setExitOnUnplug(v) } },
-                )
-                SwitchRow(
-                    label = stringResource(R.string.allow_auto_sleep),
-                    checked = settings.allowAutoSleep,
-                    onCheckedChange = { v -> scope.launch { repository.setAllowAutoSleep(v) } },
-                )
-
-                SectionTitle(stringResource(R.string.discord_webhook))
-                OutlinedTextField(
-                    value = webhookDraft,
-                    onValueChange = {
-                        webhookDraft = it
-                        scope.launch { repository.setDiscordWebhookUrl(it.trim()) }
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true,
-                    placeholder = { Text("https://discord.com/api/webhooks/…") },
-                    colors = ExposedDropdownMenuDefaults.outlinedTextFieldColors(),
-                )
-                Button(
-                    onClick = {
-                        val url = webhookDraft.trim().ifEmpty { settings.discordWebhookUrl.trim() }
-                        if (url.isEmpty()) {
-                            Toast.makeText(context, testEmptyMsg, Toast.LENGTH_SHORT).show()
-                            return@Button
-                        }
-                        if (testSending) return@Button
-                        testSending = true
-                        scope.launch {
-                            val ok = DiscordNotifier.send(url, testContent)
-                            Toast.makeText(
-                                context,
-                                if (ok) testOkMsg else testFailMsg,
-                                Toast.LENGTH_SHORT,
-                            ).show()
-                            testSending = false
-                        }
-                    },
-                    enabled = !testSending,
-                    modifier = Modifier.fillMaxWidth(),
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth(if (isLandscape) 0.8f else 1f)
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
-                    Text(stringResource(R.string.discord_test_send))
+                    SectionTitle(stringResource(R.string.idle_brightness))
+                    Text(
+                        text = "%.0f%%".format(settings.idleBrightness * 100),
+                        color = Color(0xFFAAAAAA),
+                    )
+                    Slider(
+                        value = settings.idleBrightness,
+                        onValueChange = { v ->
+                            onIdleBrightnessPreview(v)
+                            scope.launch { repository.setIdleBrightness(v) }
+                        },
+                        onValueChangeFinished = { onIdleBrightnessPreview(null) },
+                        valueRange = UserSettings.IDLE_BRIGHTNESS_MIN..UserSettings.IDLE_BRIGHTNESS_MAX,
+                    )
+
+                    SectionTitle(stringResource(R.string.force_landscape))
+                    ChipRow {
+                        SettingChip(
+                            stringResource(R.string.landscape_off),
+                            settings.landscapeMode == LandscapeMode.OFF,
+                        ) { scope.launch { repository.setLandscape(LandscapeMode.OFF) } }
+                        SettingChip(
+                            stringResource(R.string.landscape_right),
+                            settings.landscapeMode == LandscapeMode.RIGHT,
+                        ) { scope.launch { repository.setLandscape(LandscapeMode.RIGHT) } }
+                        SettingChip(
+                            stringResource(R.string.landscape_left),
+                            settings.landscapeMode == LandscapeMode.LEFT,
+                        ) { scope.launch { repository.setLandscape(LandscapeMode.LEFT) } }
+                    }
+
+                    SectionTitle(stringResource(R.string.week_start))
+                    ChipRow {
+                        SettingChip(
+                            stringResource(R.string.week_start_sunday),
+                            settings.weekStart == WeekStart.SUNDAY,
+                        ) { scope.launch { repository.setWeekStart(WeekStart.SUNDAY) } }
+                        SettingChip(
+                            stringResource(R.string.week_start_monday),
+                            settings.weekStart == WeekStart.MONDAY,
+                        ) { scope.launch { repository.setWeekStart(WeekStart.MONDAY) } }
+                    }
+
+                    SwitchRow(
+                        label = stringResource(R.string.fullscreen_enabled),
+                        checked = settings.fullscreenEnabled,
+                        onCheckedChange = { v -> scope.launch { repository.setFullscreenEnabled(v) } },
+                    )
+
+                    SwitchRow(
+                        label = stringResource(R.string.holidays_as_white),
+                        checked = settings.holidaysAsWhite,
+                        onCheckedChange = { v -> scope.launch { repository.setHolidaysAsWhite(v) } },
+                    )
+                    SwitchRow(
+                        label = stringResource(R.string.saturday_as_white),
+                        checked = settings.saturdayAsWhite,
+                        onCheckedChange = { v -> scope.launch { repository.setSaturdayAsWhite(v) } },
+                    )
+                    SwitchRow(
+                        label = stringResource(R.string.sunday_as_white),
+                        checked = settings.sundayAsWhite,
+                        onCheckedChange = { v -> scope.launch { repository.setSundayAsWhite(v) } },
+                    )
+
+                    CustomDayRuleSection(
+                        title = stringResource(R.string.custom_holidays),
+                        rules = settings.customHolidays,
+                        onAdd = { rule -> scope.launch { repository.addCustomHoliday(rule) } },
+                        onRemove = { id -> scope.launch { repository.removeCustomHoliday(id) } },
+                    )
+                    CustomDayRuleSection(
+                        title = stringResource(R.string.custom_weekdays),
+                        rules = settings.customWeekdays,
+                        onAdd = { rule -> scope.launch { repository.addCustomWeekday(rule) } },
+                        onRemove = { id -> scope.launch { repository.removeCustomWeekday(id) } },
+                    )
+
+                    SwitchRow(
+                        label = stringResource(R.string.misoperation_lock),
+                        checked = settings.misoperationLock,
+                        onCheckedChange = { v -> scope.launch { repository.setMisoperationLock(v) } },
+                    )
+                    SwitchRow(
+                        label = stringResource(R.string.exit_on_unplug),
+                        checked = settings.exitOnUnplug,
+                        onCheckedChange = { v -> scope.launch { repository.setExitOnUnplug(v) } },
+                    )
+                    SwitchRow(
+                        label = stringResource(R.string.allow_auto_sleep),
+                        checked = settings.allowAutoSleep,
+                        onCheckedChange = { v -> scope.launch { repository.setAllowAutoSleep(v) } },
+                    )
+
+                    SectionTitle(stringResource(R.string.discord_webhook))
+                    OutlinedTextField(
+                        value = webhookDraft,
+                        onValueChange = {
+                            webhookDraft = it
+                            scope.launch { repository.setDiscordWebhookUrl(it.trim()) }
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        placeholder = { Text("https://discord.com/api/webhooks/…") },
+                        colors = ExposedDropdownMenuDefaults.outlinedTextFieldColors(),
+                    )
+                    Button(
+                        onClick = {
+                            val url = webhookDraft.trim().ifEmpty { settings.discordWebhookUrl.trim() }
+                            if (url.isEmpty()) {
+                                Toast.makeText(context, testEmptyMsg, Toast.LENGTH_SHORT).show()
+                                return@Button
+                            }
+                            if (testSending) return@Button
+                            testSending = true
+                            scope.launch {
+                                val ok = DiscordNotifier.send(url, testContent)
+                                Toast.makeText(
+                                    context,
+                                    if (ok) testOkMsg else testFailMsg,
+                                    Toast.LENGTH_SHORT,
+                                ).show()
+                                testSending = false
+                            }
+                        },
+                        enabled = !testSending,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text(stringResource(R.string.discord_test_send))
+                    }
+
+                    SectionTitle(stringResource(R.string.discord_discharge))
+                    ThresholdDropdown(settings.discordDischargeThreshold) { v ->
+                        scope.launch { repository.setDiscordDischarge(v) }
+                    }
+                    SectionTitle(stringResource(R.string.discord_charge))
+                    ThresholdDropdown(settings.discordChargeThreshold) { v ->
+                        scope.launch { repository.setDiscordCharge(v) }
+                    }
+
+                    SectionTitle(stringResource(R.string.credits_oss))
+                    Text(
+                        text = stringResource(R.string.credits_holidays_jp),
+                        color = Color(0xFFAAAAAA),
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        text = versionFooter(),
+                        color = Color(0xFF888888),
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                    Spacer(Modifier.height(32.dp))
                 }
-
-                SectionTitle(stringResource(R.string.discord_discharge))
-                ThresholdDropdown(settings.discordDischargeThreshold) { v ->
-                    scope.launch { repository.setDiscordDischarge(v) }
-                }
-                SectionTitle(stringResource(R.string.discord_charge))
-                ThresholdDropdown(settings.discordChargeThreshold) { v ->
-                    scope.launch { repository.setDiscordCharge(v) }
-                }
-
-                SwitchRow(
-                    label = stringResource(R.string.debug_scrim_always_show),
-                    checked = settings.debugScrimAlwaysShow,
-                    onCheckedChange = { v -> scope.launch { repository.setDebugScrimAlwaysShow(v) } },
-                )
-
-                SectionTitle(stringResource(R.string.debug_scrim_opacity))
-                DebugIntField(
-                    value = settings.debugScrimOpacityPercent,
-                    valueRange = UserSettings.DEBUG_SCRIM_OPACITY_MIN..UserSettings.DEBUG_SCRIM_OPACITY_MAX,
-                    defaultValue = UserSettings.DEBUG_SCRIM_OPACITY_DEFAULT,
-                    suffix = "%",
-                    onCommit = { v -> scope.launch { repository.setDebugScrimOpacity(v) } },
-                )
-
-                SectionTitle(stringResource(R.string.credits_oss))
-                Text(
-                    text = stringResource(R.string.credits_holidays_jp),
-                    color = Color(0xFFAAAAAA),
-                    style = MaterialTheme.typography.bodySmall,
-                )
-
-                Spacer(Modifier.height(8.dp))
-                Text(
-                    text = versionFooter(),
-                    color = Color(0xFF888888),
-                    style = MaterialTheme.typography.bodySmall,
-                )
-                Spacer(Modifier.height(32.dp))
             }
         }
     }
@@ -358,61 +376,6 @@ private fun SwitchRow(
         Text(label, color = Color.White, modifier = Modifier.weight(1f))
         Switch(checked = checked, onCheckedChange = onCheckedChange)
     }
-}
-
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun DebugIntField(
-    value: Int,
-    valueRange: IntRange,
-    defaultValue: Int,
-    suffix: String,
-    onCommit: (Int) -> Unit,
-) {
-    var text by remember(value) { mutableStateOf(value.toString()) }
-    val focusManager = LocalFocusManager.current
-
-    fun finalize() {
-        val clamped = (text.toIntOrNull() ?: defaultValue).coerceIn(valueRange)
-        text = clamped.toString()
-        onCommit(clamped)
-    }
-
-    OutlinedTextField(
-        value = text,
-        onValueChange = { raw ->
-            // Allow empty while typing; reject non-digits. Out-of-range is coerced on commit.
-            if (raw.isEmpty()) {
-                text = ""
-                return@OutlinedTextField
-            }
-            if (raw.all { it.isDigit() } && raw.length <= 3) {
-                text = raw
-                raw.toIntOrNull()?.let { parsed ->
-                    onCommit(parsed.coerceIn(valueRange))
-                }
-            }
-        },
-        modifier = Modifier
-            .fillMaxWidth()
-            .onFocusChanged { state ->
-                if (!state.isFocused) finalize()
-            },
-        singleLine = true,
-        keyboardOptions = KeyboardOptions(
-            keyboardType = KeyboardType.Number,
-            imeAction = ImeAction.Done,
-        ),
-        keyboardActions = KeyboardActions(
-            onDone = {
-                finalize()
-                focusManager.clearFocus()
-            },
-        ),
-        suffix = { Text(suffix, color = Color(0xFFAAAAAA)) },
-        colors = ExposedDropdownMenuDefaults.outlinedTextFieldColors(),
-    )
 }
 
 private fun versionFooter(): String {

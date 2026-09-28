@@ -44,7 +44,7 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        hideSystemBars()
+        // System-bar visibility follows fullscreenEnabled (default OFF → show bars).
 
         val app = application as AlwaysCalendarApp
         val repo = app.settingsRepository
@@ -67,9 +67,12 @@ class MainActivity : AppCompatActivity() {
             val network = networkState.value
 
             val holidayMap = holidays.holidays.collectAsStateWithLifecycle().value
-            val holidayDates = remember(holidayMap) { holidayMap.keys }
+            val holidayDates = remember(holidayMap, settings.holidaysAsWhite) {
+                if (settings.holidaysAsWhite) emptySet() else holidayMap.keys
+            }
 
-            LaunchedEffect(Unit) {
+            LaunchedEffect(settings.holidaysAsWhite) {
+                if (settings.holidaysAsWhite) return@LaunchedEffect
                 holidays.loadCached()
                 val year = YearMonth.now().year
                 val ok = holidays.ensureYearsAround(year)
@@ -80,6 +83,10 @@ class MainActivity : AppCompatActivity() {
                         Toast.LENGTH_SHORT,
                     ).show()
                 }
+            }
+
+            LaunchedEffect(settings.fullscreenEnabled) {
+                applySystemBars(settings.fullscreenEnabled)
             }
 
             LaunchedEffect(settings.landscapeMode) {
@@ -303,7 +310,7 @@ class MainActivity : AppCompatActivity() {
                     settingsBrightnessPreview = null
                     showSettings = false
                     markInteraction()
-                    hideSystemBars()
+                    applySystemBars(settings.fullscreenEnabled)
                 }
                 BackHandler(enabled = showSettings) {
                     closeSettings()
@@ -335,7 +342,8 @@ class MainActivity : AppCompatActivity() {
                             statusBarsVisibleCompat = statusBarsVisibleCompat,
                             statusBarsTransientShowing = statusBarsTransientShowing,
                             onEnsureMonth = { ym ->
-                                holidays.ensureMonth(ym.year, ym.monthValue)
+                                if (settings.holidaysAsWhite) true
+                                else holidays.ensureMonth(ym.year, ym.monthValue)
                             },
                             onHolidayFetchFailed = {
                                 Toast.makeText(
@@ -366,7 +374,8 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
-        hideSystemBars()
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+        // System-bar hide/show is driven by Compose LaunchedEffect(fullscreenEnabled).
     }
 
     override fun onPause() {
@@ -380,11 +389,15 @@ class MainActivity : AppCompatActivity() {
         window.attributes = lp
     }
 
-    private fun hideSystemBars() {
+    private fun applySystemBars(fullscreen: Boolean) {
         WindowCompat.setDecorFitsSystemWindows(window, false)
         val controller = WindowInsetsControllerCompat(window, window.decorView)
-        controller.hide(WindowInsetsCompat.Type.systemBars())
-        controller.systemBarsBehavior =
-            WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        if (fullscreen) {
+            controller.hide(WindowInsetsCompat.Type.systemBars())
+            controller.systemBarsBehavior =
+                WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        } else {
+            controller.show(WindowInsetsCompat.Type.systemBars())
+        }
     }
 }
