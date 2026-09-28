@@ -17,15 +17,13 @@ import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
-import android.graphics.RenderEffect as AndroidRenderEffect
-import android.graphics.Shader
-import android.os.Build
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.areStatusBarsVisible
 import androidx.compose.foundation.layout.displayCutout
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -49,21 +47,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.SideEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clipToBounds
-import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.asComposeRenderEffect
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.graphics.layer.GraphicsLayer
-import androidx.compose.ui.graphics.layer.drawLayer
-import androidx.compose.ui.graphics.rememberGraphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
@@ -103,50 +94,25 @@ private fun usableWindowInsets(): WindowInsets = WindowInsets.displayCutout
  */
 
 /**
- * Status-bar scrim (debug016).
+ * Status-bar scrim (debug017).
  *
- * Band height stays exactly [bandHeight] (status-bar height) — never thickened by blur.
- * - Blur: real Gaussian of the recorded [contentLayer] clipped to the band.
- *   API 31+: [AndroidRenderEffect.createBlurEffect] (CLAMP). API 29–30: dark overlay only.
- * - Opacity: solid black at alpha = opacityPercent/100 drawn on top of the blur (not itself blurred).
- * Raising blur only increases the bleed radius; do not blur a solid black Box.
+ * Band height = [bandHeight] (statusBarsIgnoringVisibility, 24.dp fallback).
+ * Solid black at alpha = opacityPercent/100 only — no blur / feather / GraphicsLayer.
+ * Drawn above [StatusCluster] so clock/battery/signal sit under the dark band.
  */
 @Composable
 private fun StatusBarScrim(
-    contentLayer: GraphicsLayer,
     opacityPercent: Int,
-    blurDp: Int,
     bandHeight: Dp,
     modifier: Modifier = Modifier,
 ) {
     val opacity = UserSettings.clampScrimOpacity(opacityPercent)
-    val blur = UserSettings.clampScrimBlur(blurDp)
     val alpha = opacity / 100f
-    val density = LocalDensity.current
-    val blurRadiusPx = with(density) { blur.dp.toPx() }
-    val canHardwareBlur = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
-
     Box(
         modifier = modifier
             .fillMaxWidth()
             .height(bandHeight)
-            .clipToBounds()
-            .drawBehind {
-                if (blur > 0 && blurRadiusPx > 0f && canHardwareBlur) {
-                    contentLayer.renderEffect = AndroidRenderEffect
-                        .createBlurEffect(
-                            blurRadiusPx,
-                            blurRadiusPx,
-                            Shader.TileMode.CLAMP,
-                        )
-                        .asComposeRenderEffect()
-                    drawLayer(contentLayer)
-                    contentLayer.renderEffect = null
-                }
-                if (alpha > 0f) {
-                    drawRect(Color.Black.copy(alpha = alpha))
-                }
-            },
+            .background(Color.Black.copy(alpha = alpha)),
     )
 }
 
@@ -187,9 +153,9 @@ fun CalendarScreen(
     // (prev/next above/below). Prefer portrait stack on the equality side.
     val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
     var landscapeStatusSingleLine by remember { mutableStateOf(false) }
-    // debug015: edge-swipe fallback when transient insets never report visible.
-    var edgeSwipeShowing by remember { mutableStateOf(false) }
-    var edgeSwipeHideToken by remember { mutableLongStateOf(0L) }
+    // debug017: peripheral edge-swipe fallback when transient insets never report visible.
+    var systemBarsGestureShowing by remember { mutableStateOf(false) }
+    var systemBarsGestureHideToken by remember { mutableLongStateOf(0L) }
     val today = remember(nowMs) { LocalDate.now() }
     val wallTime = remember(nowMs) {
         val cal = java.util.Calendar.getInstance().apply { timeInMillis = nowMs }
@@ -227,14 +193,14 @@ fun CalendarScreen(
         }
     }
 
-    // Match system transient-bar feel (~2.5–3s) after top-edge swipe.
-    LaunchedEffect(edgeSwipeHideToken) {
-        val token = edgeSwipeHideToken
+    // Match system transient-bar feel (~2.5–3s) after edge / systemBars gesture.
+    LaunchedEffect(systemBarsGestureHideToken) {
+        val token = systemBarsGestureHideToken
         if (token == 0L) return@LaunchedEffect
-        edgeSwipeShowing = true
+        systemBarsGestureShowing = true
         delay(2_800L)
-        if (edgeSwipeHideToken == token) {
-            edgeSwipeShowing = false
+        if (systemBarsGestureHideToken == token) {
+            systemBarsGestureShowing = false
         }
     }
 
@@ -295,9 +261,6 @@ fun CalendarScreen(
         }
     }
 
-    // Recorded for status-bar Gaussian blur (month strip + StatusCluster).
-    val contentLayer = rememberGraphicsLayer()
-
     Box(
         modifier = modifier
             .fillMaxSize()
@@ -323,18 +286,6 @@ fun CalendarScreen(
                 )
             },
     ) {
-        // Blur source: draw via GraphicsLayer so the status-bar band can re-draw blurred.
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .drawWithContent {
-                    val contentDraw = this
-                    contentLayer.record {
-                        contentDraw.drawContent()
-                    }
-                    drawLayer(contentLayer)
-                },
-        ) {
         BoxWithConstraints(
             modifier = Modifier
                 .fillMaxSize()
@@ -430,8 +381,7 @@ fun CalendarScreen(
             }
         }
 
-        // Status (top-left) above the month strip. Inside the recorded layer so the
-        // scrim Gaussian blur + dark overlay cover clock / battery / signal too.
+        // Status (top-left) above the month strip; scrim draws above this cluster.
         StatusCluster(
             timeText = wallTime,
             batteryPercent = batteryPercent,
@@ -443,11 +393,10 @@ fun CalendarScreen(
                 .windowInsetsPadding(usableWindowInsets())
                 .padding(start = 12.dp, top = 6.dp),
         )
-        } // end blur-source Box
 
-        // Darken + blur status-bar band while visible (incl. transient / edge-swipe).
-        // Height = statusBarsIgnoringVisibility (24.dp fallback); blur does not grow height.
-        // debug016: keep 015 show triggers; real Gaussian via recorded GraphicsLayer.
+        // Darken status-bar band while visible (incl. transient / peripheral edge-swipe).
+        // Height = statusBarsIgnoringVisibility (24.dp fallback); black alpha only.
+        // showScrim = always || composeVisible || compat || transientAnim || systemBarsGestureShowing
         val density = LocalDensity.current
         val statusBarsTopPx = WindowInsets.statusBars.getTop(density)
         val ignoringTopPx = WindowInsets.statusBarsIgnoringVisibility.getTop(density)
@@ -458,7 +407,7 @@ fun CalendarScreen(
                 composeSaysVisible ||
                 statusBarsVisibleCompat ||
                 statusBarsTransientShowing ||
-                edgeSwipeShowing
+                systemBarsGestureShowing
         if (showScrim) {
             val scrimHeight = if (ignoringTopPx > 0) {
                 with(density) { ignoringTopPx.toDp() }
@@ -466,9 +415,7 @@ fun CalendarScreen(
                 24.dp
             }
             StatusBarScrim(
-                contentLayer = contentLayer,
                 opacityPercent = settings.debugScrimOpacityPercent,
-                blurDp = settings.debugScrimBlurDp,
                 bandHeight = scrimHeight,
                 modifier = Modifier
                     .align(Alignment.TopCenter)
@@ -476,21 +423,78 @@ fun CalendarScreen(
             )
         }
 
-        // Top-edge swipe (~40dp) → show scrim briefly when system transient insets
-        // never flip visible. Skip when always-on (scrim already up). Settings screen
-        // is a separate route so this overlay is calendar-only.
+        // Peripheral edge swipes (top/left/right/bottom ~40dp) → show scrim briefly when
+        // system transient insets never flip visible. Inward short drags only so month
+        // scroll in the center is unaffected. Skip when always-on (scrim already up).
         if (!settings.debugScrimAlwaysShow) {
+            val edgeZone = 40.dp
+            val minInwardPx = 4f
+            fun markSystemBarsGesture() {
+                systemBarsGestureHideToken = System.currentTimeMillis()
+            }
+            // Top → swipe down
             Box(
                 modifier = Modifier
                     .align(Alignment.TopCenter)
                     .fillMaxWidth()
-                    .height(40.dp)
+                    .height(edgeZone)
                     .pointerInput(Unit) {
                         detectVerticalDragGestures(
                             onVerticalDrag = { change, dragAmount ->
-                                if (dragAmount > 2f) {
+                                if (dragAmount > minInwardPx) {
                                     change.consume()
-                                    edgeSwipeHideToken = System.currentTimeMillis()
+                                    markSystemBarsGesture()
+                                }
+                            },
+                        )
+                    },
+            )
+            // Bottom → swipe up
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .height(edgeZone)
+                    .pointerInput(Unit) {
+                        detectVerticalDragGestures(
+                            onVerticalDrag = { change, dragAmount ->
+                                if (dragAmount < -minInwardPx) {
+                                    change.consume()
+                                    markSystemBarsGesture()
+                                }
+                            },
+                        )
+                    },
+            )
+            // Left → swipe right
+            Box(
+                modifier = Modifier
+                    .align(Alignment.CenterStart)
+                    .fillMaxHeight()
+                    .width(edgeZone)
+                    .pointerInput(Unit) {
+                        detectHorizontalDragGestures(
+                            onHorizontalDrag = { change, dragAmount ->
+                                if (dragAmount > minInwardPx) {
+                                    change.consume()
+                                    markSystemBarsGesture()
+                                }
+                            },
+                        )
+                    },
+            )
+            // Right → swipe left
+            Box(
+                modifier = Modifier
+                    .align(Alignment.CenterEnd)
+                    .fillMaxHeight()
+                    .width(edgeZone)
+                    .pointerInput(Unit) {
+                        detectHorizontalDragGestures(
+                            onHorizontalDrag = { change, dragAmount ->
+                                if (dragAmount < -minInwardPx) {
+                                    change.consume()
+                                    markSystemBarsGesture()
                                 }
                             },
                         )

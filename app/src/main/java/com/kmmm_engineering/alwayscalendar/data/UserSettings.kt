@@ -12,9 +12,9 @@ enum class WeekStart { SUNDAY, MONDAY }
  * [firstRunHintSeen] is true after Settings has been opened at least once
  * (DataStore key: first_run_hint_seen).
  *
- * Temporary status-bar scrim tunables (debug013/016):
+ * Temporary status-bar scrim tunables (debug013/017):
  * - [debugScrimOpacityPercent] 0..100 (%), default 85 → black overlay alpha = value/100f
- * - [debugScrimBlurDp] 0..50 (dp), default 0 → Gaussian blur radius (API 31+)
+ * - [debugScrimBlurDp] legacy DataStore read-discard (blur UI/draw removed in 017)
  * - [debugScrimAlwaysShow] when true, draw scrim even if status bars appear hidden
  */
 data class UserSettings(
@@ -29,6 +29,7 @@ data class UserSettings(
     val weekStart: WeekStart = WeekStart.SUNDAY,
     val misoperationLock: Boolean = false,
     val debugScrimOpacityPercent: Int = DEBUG_SCRIM_OPACITY_DEFAULT,
+    /** @deprecated blur removed in debug017; kept for DataStore compatibility. */
     val debugScrimBlurDp: Int = DEBUG_SCRIM_BLUR_DEFAULT,
     val debugScrimAlwaysShow: Boolean = false,
 ) {
@@ -45,7 +46,7 @@ data class UserSettings(
         const val DEBUG_SCRIM_OPACITY_MAX = 100
         const val DEBUG_SCRIM_OPACITY_DEFAULT = 85
 
-        /** debug013/016: status-bar scrim Gaussian blur radius (dp). */
+        /** Legacy blur radius (dp); unused since debug017. */
         const val DEBUG_SCRIM_BLUR_MIN = 0
         const val DEBUG_SCRIM_BLUR_MAX = 50
         const val DEBUG_SCRIM_BLUR_DEFAULT = 0

@@ -236,15 +236,6 @@ fun SettingsScreen(
                     onCommit = { v -> scope.launch { repository.setDebugScrimOpacity(v) } },
                 )
 
-                SectionTitle(stringResource(R.string.debug_scrim_blur))
-                DebugIntField(
-                    value = settings.debugScrimBlurDp,
-                    valueRange = UserSettings.DEBUG_SCRIM_BLUR_MIN..UserSettings.DEBUG_SCRIM_BLUR_MAX,
-                    defaultValue = UserSettings.DEBUG_SCRIM_BLUR_DEFAULT,
-                    suffix = "dp",
-                    onCommit = { v -> scope.launch { repository.setDebugScrimBlur(v) } },
-                )
-
                 SectionTitle(stringResource(R.string.credits_oss))
                 Text(
                     text = stringResource(R.string.credits_holidays_jp),

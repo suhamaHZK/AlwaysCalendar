@@ -219,10 +219,10 @@ class MainActivity : AppCompatActivity() {
             // Observe system status-bar visibility (incl. transient swipe bars).
             // Some devices leave Compose areStatusBarsVisible / statusBars height at
             // false/0 during BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE; WindowInsetsCompat
-            // isVisible is the reliable path recommended by the immersive guide.
+            // isVisible(statusBars) is the reliable path recommended by the immersive guide.
             // Spy view: do not replace Compose's OnApplyWindowInsetsListener on content.
-            // debug015: also track WindowInsetsAnimationCompat for transient overlay bars
-            // that never flip isVisible / insets height.
+            // debug017: WindowInsetsAnimationCompat watches systemBars() (status+nav);
+            // any transient bar animation → scrim; isVisible spy stays statusBars-only.
             var statusBarsVisibleCompat by remember { mutableStateOf(false) }
             var statusBarsTransientShowing by remember { mutableStateOf(false) }
             DisposableEffect(Unit) {
@@ -248,11 +248,11 @@ class MainActivity : AppCompatActivity() {
                 val animCallback = object : WindowInsetsAnimationCompat.Callback(
                     WindowInsetsAnimationCompat.Callback.DISPATCH_MODE_CONTINUE_ON_SUBTREE,
                 ) {
-                    private fun tracksStatusBars(animation: WindowInsetsAnimationCompat): Boolean =
-                        (animation.typeMask and WindowInsetsCompat.Type.statusBars()) != 0
+                    private fun tracksSystemBars(animation: WindowInsetsAnimationCompat): Boolean =
+                        (animation.typeMask and WindowInsetsCompat.Type.systemBars()) != 0
 
                     override fun onPrepare(animation: WindowInsetsAnimationCompat) {
-                        if (tracksStatusBars(animation)) {
+                        if (tracksSystemBars(animation)) {
                             decor.removeCallbacks(clearTransient)
                             statusBarsTransientShowing = true
                         }
@@ -262,7 +262,7 @@ class MainActivity : AppCompatActivity() {
                         animation: WindowInsetsAnimationCompat,
                         bounds: WindowInsetsAnimationCompat.BoundsCompat,
                     ): WindowInsetsAnimationCompat.BoundsCompat {
-                        if (tracksStatusBars(animation)) {
+                        if (tracksSystemBars(animation)) {
                             decor.removeCallbacks(clearTransient)
                             statusBarsTransientShowing = true
                         }
@@ -273,15 +273,15 @@ class MainActivity : AppCompatActivity() {
                         insets: WindowInsetsCompat,
                         runningAnimations: MutableList<WindowInsetsAnimationCompat>,
                     ): WindowInsetsCompat {
-                        val statusRunning = runningAnimations.any { tracksStatusBars(it) }
-                        if (statusRunning) {
+                        val systemBarsRunning = runningAnimations.any { tracksSystemBars(it) }
+                        if (systemBarsRunning) {
                             statusBarsTransientShowing = true
                         }
                         return insets
                     }
 
                     override fun onEnd(animation: WindowInsetsAnimationCompat) {
-                        if (!tracksStatusBars(animation)) return
+                        if (!tracksSystemBars(animation)) return
                         // Transient bars often stay overlaid ~2–3s after the show
                         // animation ends without flipping isVisible; keep scrim up briefly.
                         decor.removeCallbacks(clearTransient)
