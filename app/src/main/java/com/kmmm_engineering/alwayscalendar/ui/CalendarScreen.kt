@@ -14,6 +14,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
@@ -41,6 +42,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.SideEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -113,7 +115,12 @@ fun CalendarScreen(
     var shiftX by remember { mutableIntStateOf(0) }
     var shiftY by remember { mutableIntStateOf(0) }
     val configuration = LocalConfiguration.current
+    // Strip direction follows Configuration.orientation (not usable-area aspect after cutout).
+    // Android reports ORIENTATION_LANDSCAPE only when screen width > height; when
+    // width == height (exact square) it is ORIENTATION_PORTRAIT → vertical strip
+    // (prev/next above/below). Prefer portrait stack on the equality side.
     val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+    var landscapeStatusSingleLine by remember { mutableStateOf(false) }
     val today = remember(nowMs) { LocalDate.now() }
     val wallTime = remember(nowMs) {
         val cal = java.util.Calendar.getInstance().apply { timeInMillis = nowMs }
@@ -286,11 +293,18 @@ fun CalendarScreen(
                 ),
         ) {
             // Center-first: maximize current month, then size prev/next from remaining margins.
+            // Square usable area (maxWidth ≈ maxHeight) still uses portrait when
+            // Configuration says portrait (equality → not LANDSCAPE). See isLandscape above.
             val (centerScale, sideScale) = if (isLandscape) {
                 fitMonthScalesLandscape(maxWidth, maxHeight)
             } else {
                 fitMonthScalesPortrait(maxWidth, maxHeight)
             }
+
+            // Landscape: if stacked status would intersect left (or center) month, use 1-line.
+            val statusSingleLine = isLandscape &&
+                statusOverlapsMonthLandscape(maxWidth, maxHeight, centerScale, sideScale)
+            SideEffect { landscapeStatusSingleLine = statusSingleLine }
 
             if (isLandscape) {
                 MonthStripLandscape(
@@ -322,12 +336,14 @@ fun CalendarScreen(
         }
 
         // Status (top-left) drawn above the month strip so near-filled prev month
-        // does not cover time / battery / signal.
+        // does not cover time / battery / signal. Landscape may collapse to 1 line
+        // when the stacked cluster would overlap the left/center month.
         StatusCluster(
             timeText = wallTime,
             batteryPercent = batteryPercent,
             isCharging = isCharging,
             networkStatus = networkStatus,
+            singleLine = landscapeStatusSingleLine,
             modifier = Modifier
                 .align(Alignment.TopStart)
                 .windowInsetsPadding(usableWindowInsets())
@@ -471,9 +487,9 @@ private fun MonthStripLandscape(
 ) {
     val density = LocalDensity.current
     BoxWithConstraints(modifier = modifier) {
-        // Base = height-maximized 1:1 square; scales shrink uniformly into usable width.
-        val baseH = maxHeight * 0.92f
-        val baseW = baseH // month block is always square
+        // Base = height-maximized 1:1 square (side = usableHeight at scale 1).
+        // Scales from fitMonthScalesLandscape shrink uniformly into leftover width.
+        val baseW = maxHeight // month block is always square; side == usable height
         val sideW = baseW * sideScale
         val centerW = baseW * centerScale
         val gap = MonthStripGap
@@ -583,16 +599,19 @@ private fun fitMonthScalesPortrait(
 }
 
 /**
- * Landscape: each month is a 1:1 square.
- * (1) Maximize center square by height (side = 0.92 * usable height), clamp to width.
- * (2) Size prev/next squares uniformly from leftover left/right margins.
- * Never shrinks center to enlarge sides. No non-uniform crush.
+ * Landscape: same procedure as portrait, left/right version.
+ * Each month is a 1:1 square.
+ * (1) Maximize center square by height: side = usableHeight (width matches → square).
+ *     If that exceeds usable width, clamp so the square fits width.
+ * (2) Only then size prev/next squares uniformly from leftover left/right margins
+ *     (mirror of portrait's top/bottom leftover). Never shrinks center to enlarge sides.
  */
 private fun fitMonthScalesLandscape(
     totalW: androidx.compose.ui.unit.Dp,
     totalH: androidx.compose.ui.unit.Dp,
 ): Pair<Float, Float> {
-    val fullBaseSide = totalH * 0.92f
+    // Natural (scale=1) side length = full usable height (caller already applied insets/padding).
+    val fullBaseSide = totalH
     if (fullBaseSide.value <= 0f) return 1f to 0.35f
 
     var centerScale = 1f
@@ -607,21 +626,59 @@ private fun fitMonthScalesLandscape(
     return centerScale to sideScale
 }
 
+/**
+ * Predict whether the stacked (portrait) status cluster intersects the left side month
+ * or the center month in landscape. Uses the same geometry as [MonthStripLandscape]
+ * (ignores OLED burn-in jitter of a few dp). Intrinsic stacked size is approximate.
+ */
+private fun statusOverlapsMonthLandscape(
+    totalW: androidx.compose.ui.unit.Dp,
+    totalH: androidx.compose.ui.unit.Dp,
+    centerScale: Float,
+    sideScale: Float,
+): Boolean {
+    val fullBaseSide = totalH
+    val centerSide = fullBaseSide * centerScale
+    val sideSide = fullBaseSide * sideScale
+    val gap = MonthStripGap
+    val packW = sideSide * 2f + centerSide + gap * 2f
+    val originX = (totalW - packW) / 2f
+
+    // Stacked status intrinsic (time / battery / signal column) — generous for fontScale.
+    val statusW = 52.dp
+    val statusH = 56.dp
+    val statusLeft = 0.dp
+    val statusTop = 0.dp
+    val statusRight = statusLeft + statusW
+    val statusBottom = statusTop + statusH
+
+    fun overlaps(monthLeft: androidx.compose.ui.unit.Dp, monthTop: androidx.compose.ui.unit.Dp, monthSide: androidx.compose.ui.unit.Dp): Boolean {
+        val monthRight = monthLeft + monthSide
+        val monthBottom = monthTop + monthSide
+        val overlapX = statusRight > monthLeft && statusLeft < monthRight
+        val overlapY = statusBottom > monthTop && statusTop < monthBottom
+        return overlapX && overlapY
+    }
+
+    val leftLeft = originX
+    val leftTop = (totalH - sideSide) / 2f
+    if (overlaps(leftLeft, leftTop, sideSide)) return true
+
+    val centerLeft = originX + sideSide + gap
+    val centerTop = (totalH - centerSide) / 2f
+    return overlaps(centerLeft, centerTop, centerSide)
+}
+
 @Composable
 private fun StatusCluster(
     timeText: String,
     batteryPercent: Int,
     isCharging: Boolean,
     networkStatus: NetworkStatus,
+    singleLine: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
-    Column(modifier = modifier) {
-        Text(
-            text = timeText,
-            color = Color.White,
-            fontSize = 14.sp,
-            fontWeight = FontWeight.Medium,
-        )
+    val batteryRow: @Composable () -> Unit = {
         Row(verticalAlignment = Alignment.CenterVertically) {
             if (isCharging) {
                 LightningBoltIcon(
@@ -638,8 +695,35 @@ private fun StatusCluster(
                 fontSize = 13.sp,
             )
         }
-        Spacer(Modifier.height(2.dp))
-        NetworkSignalIcon(networkStatus)
+    }
+    if (singleLine) {
+        // Landscape collision avoidance: time · battery · signal on one row.
+        Row(
+            modifier = modifier,
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text(
+                text = timeText,
+                color = Color.White,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Medium,
+            )
+            batteryRow()
+            NetworkSignalIcon(networkStatus)
+        }
+    } else {
+        Column(modifier = modifier) {
+            Text(
+                text = timeText,
+                color = Color.White,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Medium,
+            )
+            batteryRow()
+            Spacer(Modifier.height(2.dp))
+            NetworkSignalIcon(networkStatus)
+        }
     }
 }
 

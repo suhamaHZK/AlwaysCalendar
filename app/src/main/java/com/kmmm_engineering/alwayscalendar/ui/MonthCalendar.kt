@@ -3,14 +3,15 @@ package com.kmmm_engineering.alwayscalendar.ui
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -20,7 +21,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.layout.layout
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnit
@@ -32,6 +35,7 @@ import java.time.LocalDate
 import java.time.YearMonth
 import java.time.format.TextStyle
 import java.util.Locale
+import kotlin.math.max
 import kotlin.math.roundToInt
 
 private val ColorSunday = Color(0xFFFF5555)
@@ -62,7 +66,6 @@ fun MonthCalendar(
     val monthNumSp = 28.sp
     val monthNameSp = 13.sp
     val weekdaySp = 11.sp
-    val daySp = 16.sp
     val headerGap = 2.dp
     val gridGap = 1.dp
 
@@ -125,27 +128,57 @@ fun MonthCalendar(
         Spacer(Modifier.height(gridGap))
 
         // 6 equal rows fill the remaining square area (no fixed cell aspect).
-        Column(modifier = Modifier.weight(1f).fillMaxWidth()) {
-            days.chunked(7).forEach { week ->
-                Row(
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxWidth(),
-                ) {
-                    week.forEach { cell ->
-                        DayCell(
-                            cell = cell,
-                            today = today,
-                            isHoliday = isHoliday,
-                            daySp = daySp,
-                            modifier = Modifier
-                                .weight(1f)
-                                .fillMaxHeight(),
-                        )
+        // Day font size is derived once from cell short side (≈90%) using "00" probe
+        // so every date in the month shares the same sp (1-digit and 2-digit alike).
+        BoxWithConstraints(modifier = Modifier.weight(1f).fillMaxWidth()) {
+            val cellShortSide = minOf(maxWidth / 7f, maxHeight / 6f)
+            val daySp = dayNumberFontSize(cellShortSide)
+            Column(modifier = Modifier.fillMaxSize()) {
+                days.chunked(7).forEach { week ->
+                    Row(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxWidth(),
+                    ) {
+                        week.forEach { cell ->
+                            DayCell(
+                                cell = cell,
+                                today = today,
+                                isHoliday = isHoliday,
+                                daySp = daySp,
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .fillMaxHeight(),
+                            )
+                        }
                     }
                 }
             }
         }
+    }
+}
+
+/**
+ * Font size for day numerals: ~90% of the day-cell short side, sized so the probe
+ * string "00" (two max-width digits) fits that target. Same [TextUnit] for every
+ * date in the month — never scale per digit count.
+ */
+@Composable
+private fun dayNumberFontSize(cellShortSide: Dp): TextUnit {
+    val density = LocalDensity.current
+    val textMeasurer = rememberTextMeasurer()
+    return remember(cellShortSide, density.density, density.fontScale, textMeasurer) {
+        val targetPx = with(density) { cellShortSide.toPx() } * 0.9f
+        if (targetPx <= 0f) return@remember 16.sp
+        val probeSp = 100.sp
+        val layout = textMeasurer.measure(
+            text = "00",
+            style = androidx.compose.ui.text.TextStyle(fontSize = probeSp, fontWeight = FontWeight.Normal),
+        )
+        val measured = max(layout.size.width, layout.size.height).toFloat()
+        if (measured <= 0f) return@remember 16.sp
+        val probePx = with(density) { probeSp.toPx() }
+        with(density) { (probePx * (targetPx / measured)).toSp() }
     }
 }
 
@@ -157,31 +190,34 @@ private fun DayCell(
     daySp: TextUnit,
     modifier: Modifier = Modifier,
 ) {
+    val date = cell.date
+    val isToday = date != null && date == today
+    // Today: rounded border around the whole grid cell (not around the digits alone).
     Box(
-        modifier = modifier,
+        modifier = modifier.then(
+            if (isToday) {
+                Modifier.border(
+                    width = 1.5.dp,
+                    color = ColorTodayBorder,
+                    shape = RoundedCornerShape(6.dp),
+                )
+            } else {
+                Modifier
+            },
+        ),
         contentAlignment = Alignment.Center,
     ) {
-        val date = cell.date ?: return@Box
+        if (date == null) return@Box
         val holiday = isHoliday(date)
         val color = dayColor(date.dayOfWeek, holiday)
-        val isToday = date == today
         Text(
             text = date.dayOfMonth.toString(),
             color = color,
             fontSize = daySp,
             fontWeight = if (isToday) FontWeight.Bold else FontWeight.Normal,
             textAlign = TextAlign.Center,
-            modifier = if (isToday) {
-                Modifier
-                    .border(
-                        width = 1.5.dp,
-                        color = ColorTodayBorder,
-                        shape = RoundedCornerShape(4.dp),
-                    )
-                    .padding(horizontal = 2.dp, vertical = 1.dp)
-            } else {
-                Modifier
-            },
+            maxLines = 1,
+            softWrap = false,
         )
     }
 }
