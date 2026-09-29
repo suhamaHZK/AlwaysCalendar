@@ -7,15 +7,15 @@ import androidx.compose.runtime.Composable
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
-import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.border
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
@@ -38,8 +38,6 @@ import androidx.compose.foundation.layout.statusBarsIgnoringVisibility
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -410,6 +408,7 @@ fun CalendarScreen(
                     colorOptions = colorOptions,
                     misoperationLock = settings.misoperationLock,
                     onSelectDelta = { animateToMonthDelta(it) },
+                    onDoubleTapSettings = { showSlider = true },
                     modifier = Modifier.fillMaxSize(),
                 )
             } else {
@@ -424,6 +423,7 @@ fun CalendarScreen(
                     colorOptions = colorOptions,
                     misoperationLock = settings.misoperationLock,
                     onSelectDelta = { animateToMonthDelta(it) },
+                    onDoubleTapSettings = { showSlider = true },
                     modifier = Modifier.fillMaxSize(),
                 )
             }
@@ -552,24 +552,36 @@ fun CalendarScreen(
         }
 
         // 「今月」— bottom-left usable; hidden under misoperation lock.
+        // Uses detectTapGestures so single-tap waits double-tap timeout (~300ms);
+        // second tap opens settings (same as blank / side-month areas).
         if (!settings.misoperationLock) {
             val thisMonthLabel = if (isLandscape) "今月" else "今\n月"
-            OutlinedButton(
-                onClick = {
-                    onSingleTap()
-                    goToCurrentMonth()
-                },
+            val thisMonthPadding = if (isLandscape) {
+                PaddingValues(horizontal = 14.dp, vertical = 10.dp)
+            } else {
+                // Portrait: wrap 今\n月 as tall rounded rect (no Material min square).
+                PaddingValues(horizontal = 8.dp, vertical = 14.dp)
+            }
+            Box(
                 modifier = Modifier
                     .align(Alignment.BottomStart)
                     .windowInsetsPadding(usableWindowInsets(fullscreen))
-                    .padding(start = 12.dp, bottom = 12.dp),
-                shape = RoundedCornerShape(8.dp),
-                border = BorderStroke(1.5.dp, Color(0xFFCCCCCC)),
-                colors = ButtonDefaults.outlinedButtonColors(
-                    contentColor = Color(0xFFCCCCCC),
-                    containerColor = Color.Transparent,
-                ),
-                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
+                    .padding(start = 12.dp, bottom = 12.dp)
+                    .then(
+                        if (isLandscape) Modifier else Modifier.defaultMinSize(minWidth = 1.dp, minHeight = 1.dp),
+                    )
+                    .border(1.5.dp, Color(0xFFCCCCCC), RoundedCornerShape(8.dp))
+                    .pointerInput(centerMonth, isLandscape) {
+                        detectTapGestures(
+                            onDoubleTap = { showSlider = true },
+                            onTap = {
+                                onSingleTap()
+                                goToCurrentMonth()
+                            },
+                        )
+                    }
+                    .padding(thisMonthPadding),
+                contentAlignment = Alignment.Center,
             ) {
                 Text(
                     text = thisMonthLabel,
@@ -577,7 +589,7 @@ fun CalendarScreen(
                     fontSize = 16.sp,
                     fontWeight = FontWeight.SemiBold,
                     textAlign = TextAlign.Center,
-                    lineHeight = 20.sp,
+                    lineHeight = if (isLandscape) 20.sp else 22.sp,
                 )
             }
         }
@@ -629,6 +641,7 @@ private fun MonthStripPortrait(
     colorOptions: DayColorOptions,
     misoperationLock: Boolean,
     onSelectDelta: (Long) -> Unit,
+    onDoubleTapSettings: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val density = LocalDensity.current
@@ -682,10 +695,16 @@ private fun MonthStripPortrait(
                             alpha = (1.25f - dist * 0.35f).coerceIn(0.35f, 1f)
                         }
                         .then(
-                            if (!misoperationLock && index == -1) {
-                                Modifier.clickable { onSelectDelta(-1) }
-                            } else if (!misoperationLock && index == 1) {
-                                Modifier.clickable { onSelectDelta(1) }
+                            if (!misoperationLock && (index == -1 || index == 1)) {
+                                // Wait double-tap timeout before month jump so usable-area
+                                // double-tap still opens settings (drag stays on parent).
+                                val delta = if (index == -1) -1L else 1L
+                                Modifier.pointerInput(delta, onSelectDelta, onDoubleTapSettings) {
+                                    detectTapGestures(
+                                        onDoubleTap = { onDoubleTapSettings() },
+                                        onTap = { onSelectDelta(delta) },
+                                    )
+                                }
                             } else {
                                 Modifier
                             },
@@ -718,6 +737,7 @@ private fun MonthStripLandscape(
     colorOptions: DayColorOptions,
     misoperationLock: Boolean,
     onSelectDelta: (Long) -> Unit,
+    onDoubleTapSettings: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val density = LocalDensity.current
@@ -769,10 +789,16 @@ private fun MonthStripLandscape(
                             alpha = (1.25f - dist * 0.35f).coerceIn(0.35f, 1f)
                         }
                         .then(
-                            if (!misoperationLock && index == -1) {
-                                Modifier.clickable { onSelectDelta(-1) }
-                            } else if (!misoperationLock && index == 1) {
-                                Modifier.clickable { onSelectDelta(1) }
+                            if (!misoperationLock && (index == -1 || index == 1)) {
+                                // Wait double-tap timeout before month jump so usable-area
+                                // double-tap still opens settings (drag stays on parent).
+                                val delta = if (index == -1) -1L else 1L
+                                Modifier.pointerInput(delta, onSelectDelta, onDoubleTapSettings) {
+                                    detectTapGestures(
+                                        onDoubleTap = { onDoubleTapSettings() },
+                                        onTap = { onSelectDelta(delta) },
+                                    )
+                                }
                             } else {
                                 Modifier
                             },
