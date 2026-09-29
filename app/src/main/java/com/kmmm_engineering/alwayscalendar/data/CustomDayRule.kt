@@ -96,13 +96,13 @@ data class CustomDayRule(
 
         fun kindLabel(kind: CustomDayKind): String = when (kind) {
             CustomDayKind.ONCE -> "1日のみ"
-            CustomDayKind.YEARLY_MD -> "毎年月日"
-            CustomDayKind.YEARLY_NTH_DOW -> "毎年M月第N曜日"
-            CustomDayKind.YEARLY_MONTH_END -> "毎年月末"
-            CustomDayKind.MONTHLY_D -> "毎月D日"
-            CustomDayKind.MONTHLY_NTH_DOW -> "毎月第N曜日"
+            CustomDayKind.YEARLY_MD -> "毎年 M 月 D 日"
+            CustomDayKind.YEARLY_NTH_DOW -> "毎年 M 月第 N W 曜日"
+            CustomDayKind.YEARLY_MONTH_END -> "毎年 M 月末"
+            CustomDayKind.MONTHLY_D -> "毎月 D 日"
+            CustomDayKind.MONTHLY_NTH_DOW -> "毎月第 N W 曜日"
             CustomDayKind.MONTHLY_END -> "毎月末"
-            CustomDayKind.WEEKLY_DOW -> "毎週曜日"
+            CustomDayKind.WEEKLY_DOW -> "毎週 W 曜日"
         }
 
         /** True when [date] is the [nth] (1..5) occurrence of [isoDow] in its month. */

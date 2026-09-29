@@ -17,10 +17,10 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MenuAnchorType
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -147,42 +147,51 @@ private fun AddCustomDayDialog(
 
                 when (kind) {
                     CustomDayKind.ONCE -> {
-                        TextButton(onClick = { showDatePicker = true }) {
-                            Text("${year}年${month}月${day}日 を選択")
+                        OutlinedButton(
+                            onClick = { showDatePicker = true },
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Text("${year}年${month}月${day}日")
                         }
                     }
                     CustomDayKind.YEARLY_MD -> {
-                        TextButton(onClick = { showDatePicker = true }) {
+                        OutlinedButton(
+                            onClick = { showDatePicker = true },
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
                             Text("基準日: ${month}月${day}日")
                         }
                     }
                     CustomDayKind.YEARLY_NTH_DOW -> {
-                        MonthChips(month) { month = it }
-                        NthChips(nth) { nth = it }
-                        DowChips(dow) { dow = it }
+                        MonthDropdown(month) { month = it }
+                        NthDropdown(nth) { nth = it }
+                        DowDropdown(dow) { dow = it }
                     }
                     CustomDayKind.YEARLY_MONTH_END -> {
-                        MonthChips(month) { month = it }
+                        MonthDropdown(month) { month = it }
                     }
                     CustomDayKind.MONTHLY_D -> {
-                        TextButton(onClick = { showDatePicker = true }) {
-                            Text("日: ${day}日")
+                        OutlinedButton(
+                            onClick = { showDatePicker = true },
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Text("${day}日")
                         }
                     }
                     CustomDayKind.MONTHLY_NTH_DOW -> {
-                        NthChips(nth) { nth = it }
-                        DowChips(dow) { dow = it }
+                        NthDropdown(nth) { nth = it }
+                        DowDropdown(dow) { dow = it }
                     }
                     CustomDayKind.MONTHLY_END -> {
-                        Text("毎月末日", color = Color.White)
+                        Text("毎月末", color = Color.White)
                     }
                     CustomDayKind.WEEKLY_DOW -> {
-                        DowChips(dow) { dow = it }
+                        DowDropdown(dow) { dow = it }
                     }
                 }
 
                 Text(
-                    text = "表示例: " + CustomDayRule(
+                    text = "プレビュー: " + CustomDayRule(
                         kind = kind, year = year, month = month, day = day, nth = nth, dayOfWeek = dow,
                     ).displayLabel(),
                     color = Color(0xFF888888),
@@ -196,7 +205,8 @@ private fun AddCustomDayDialog(
 
     if (showDatePicker) {
         val zone = ZoneId.systemDefault()
-        val initialMillis = today.atStartOfDay(zone).toInstant().toEpochMilli()
+        val initialMillis = LocalDate.of(year, month, day.coerceIn(1, 28))
+            .atStartOfDay(zone).toInstant().toEpochMilli()
         val state = rememberDatePickerState(initialSelectedDateMillis = initialMillis)
         DatePickerDialog(
             onDismissRequest = { showDatePicker = false },
@@ -259,53 +269,106 @@ private fun KindDropdown(selected: CustomDayKind, onSelect: (CustomDayKind) -> U
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun MonthChips(selected: Int, onSelect: (Int) -> Unit) {
+private fun MonthDropdown(selected: Int, onSelect: (Int) -> Unit) {
+    var expanded by remember { mutableStateOf(false) }
     Text("月", color = Color(0xFFAAAAAA))
-    Row(horizontalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.fillMaxWidth()) {
-        // Wrap manually in two rows via simple flow using two Rows
-    }
-    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        listOf(1..6, 7..12).forEach { range ->
-            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                range.forEach { m ->
-                    FilterChip(
-                        selected = selected == m,
-                        onClick = { onSelect(m) },
-                        label = { Text("${m}月") },
-                    )
-                }
+    ExposedDropdownMenuBox(
+        expanded = expanded,
+        onExpandedChange = { expanded = it },
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        OutlinedTextField(
+            value = "${selected}月",
+            onValueChange = {},
+            readOnly = true,
+            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+            modifier = Modifier
+                .menuAnchor(MenuAnchorType.PrimaryNotEditable)
+                .fillMaxWidth(),
+            colors = ExposedDropdownMenuDefaults.outlinedTextFieldColors(),
+        )
+        ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            (1..12).forEach { m ->
+                DropdownMenuItem(
+                    text = { Text("${m}月") },
+                    onClick = {
+                        onSelect(m)
+                        expanded = false
+                    },
+                )
             }
         }
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun NthChips(selected: Int, onSelect: (Int) -> Unit) {
+private fun NthDropdown(selected: Int, onSelect: (Int) -> Unit) {
+    var expanded by remember { mutableStateOf(false) }
     Text("第N", color = Color(0xFFAAAAAA))
-    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-        (1..5).forEach { n ->
-            FilterChip(
-                selected = selected == n,
-                onClick = { onSelect(n) },
-                label = { Text("第${n}") },
-            )
+    ExposedDropdownMenuBox(
+        expanded = expanded,
+        onExpandedChange = { expanded = it },
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        OutlinedTextField(
+            value = "第${selected}",
+            onValueChange = {},
+            readOnly = true,
+            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+            modifier = Modifier
+                .menuAnchor(MenuAnchorType.PrimaryNotEditable)
+                .fillMaxWidth(),
+            colors = ExposedDropdownMenuDefaults.outlinedTextFieldColors(),
+        )
+        ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            (1..5).forEach { n ->
+                DropdownMenuItem(
+                    text = { Text("第${n}") },
+                    onClick = {
+                        onSelect(n)
+                        expanded = false
+                    },
+                )
+            }
         }
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun DowChips(selected: Int, onSelect: (Int) -> Unit) {
-    Text("曜日", color = Color(0xFFAAAAAA))
+private fun DowDropdown(selected: Int, onSelect: (Int) -> Unit) {
+    var expanded by remember { mutableStateOf(false) }
     // Display Sun-first for JP UX but store ISO values
     val order = listOf(7, 1, 2, 3, 4, 5, 6) // 日〜土
-    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-        order.forEach { iso ->
-            FilterChip(
-                selected = selected == iso,
-                onClick = { onSelect(iso) },
-                label = { Text(CustomDayRule.dayOfWeekLabel(iso)) },
-            )
+    Text("曜日", color = Color(0xFFAAAAAA))
+    ExposedDropdownMenuBox(
+        expanded = expanded,
+        onExpandedChange = { expanded = it },
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        OutlinedTextField(
+            value = CustomDayRule.dayOfWeekLabel(selected) + "曜日",
+            onValueChange = {},
+            readOnly = true,
+            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+            modifier = Modifier
+                .menuAnchor(MenuAnchorType.PrimaryNotEditable)
+                .fillMaxWidth(),
+            colors = ExposedDropdownMenuDefaults.outlinedTextFieldColors(),
+        )
+        ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            order.forEach { iso ->
+                DropdownMenuItem(
+                    text = { Text(CustomDayRule.dayOfWeekLabel(iso) + "曜日") },
+                    onClick = {
+                        onSelect(iso)
+                        expanded = false
+                    },
+                )
+            }
         }
     }
 }

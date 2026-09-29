@@ -7,6 +7,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -14,6 +15,7 @@ import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
@@ -35,6 +37,7 @@ import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.statusBarsIgnoringVisibility
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -549,22 +552,27 @@ fun CalendarScreen(
         // 「今月」— bottom-left usable; hidden under misoperation lock.
         if (!settings.misoperationLock) {
             val thisMonthLabel = if (isLandscape) "今月" else "今\n月"
-            Text(
-                text = thisMonthLabel,
-                color = Color(0xFFCCCCCC),
-                fontSize = 14.sp,
-                fontWeight = FontWeight.Medium,
-                textAlign = TextAlign.Center,
-                lineHeight = 18.sp,
+            OutlinedButton(
+                onClick = {
+                    onSingleTap()
+                    goToCurrentMonth()
+                },
                 modifier = Modifier
                     .align(Alignment.BottomStart)
                     .windowInsetsPadding(usableWindowInsets(fullscreen))
-                    .padding(start = 16.dp, bottom = 16.dp)
-                    .clickable {
-                        onSingleTap()
-                        goToCurrentMonth()
-                    },
-            )
+                    .padding(start = 12.dp, bottom = 12.dp),
+                border = BorderStroke(1.5.dp, Color(0xFFCCCCCC)),
+                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
+            ) {
+                Text(
+                    text = thisMonthLabel,
+                    color = Color(0xFFCCCCCC),
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    textAlign = TextAlign.Center,
+                    lineHeight = 20.sp,
+                )
+            }
         }
 
         val showPersistentHint = !settings.firstRunHintSeen && !showSlider
