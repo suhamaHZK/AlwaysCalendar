@@ -37,6 +37,8 @@ import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.statusBarsIgnoringVisibility
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.LaunchedEffect
@@ -561,7 +563,12 @@ fun CalendarScreen(
                     .align(Alignment.BottomStart)
                     .windowInsetsPadding(usableWindowInsets(fullscreen))
                     .padding(start = 12.dp, bottom = 12.dp),
+                shape = RoundedCornerShape(8.dp),
                 border = BorderStroke(1.5.dp, Color(0xFFCCCCCC)),
+                colors = ButtonDefaults.outlinedButtonColors(
+                    contentColor = Color(0xFFCCCCCC),
+                    containerColor = Color.Transparent,
+                ),
                 contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
             ) {
                 Text(

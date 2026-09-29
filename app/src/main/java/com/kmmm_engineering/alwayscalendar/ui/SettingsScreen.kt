@@ -157,12 +157,6 @@ fun SettingsScreen(
                     }
 
                     SwitchRow(
-                        label = stringResource(R.string.fullscreen_enabled),
-                        checked = settings.fullscreenEnabled,
-                        onCheckedChange = { v -> scope.launch { repository.setFullscreenEnabled(v) } },
-                    )
-
-                    SwitchRow(
                         label = stringResource(R.string.holidays_as_white),
                         checked = settings.holidaysAsWhite,
                         onCheckedChange = { v -> scope.launch { repository.setHolidaysAsWhite(v) } },
@@ -189,6 +183,12 @@ fun SettingsScreen(
                         rules = settings.customWeekdays,
                         onAdd = { rule -> scope.launch { repository.addCustomWeekday(rule) } },
                         onRemove = { id -> scope.launch { repository.removeCustomWeekday(id) } },
+                    )
+
+                    SwitchRow(
+                        label = stringResource(R.string.fullscreen_enabled),
+                        checked = settings.fullscreenEnabled,
+                        onCheckedChange = { v -> scope.launch { repository.setFullscreenEnabled(v) } },
                     )
 
                     SwitchRow(
