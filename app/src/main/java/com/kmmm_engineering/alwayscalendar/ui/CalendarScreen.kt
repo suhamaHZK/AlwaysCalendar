@@ -559,8 +559,9 @@ fun CalendarScreen(
             val thisMonthPadding = if (isLandscape) {
                 PaddingValues(horizontal = 14.dp, vertical = 10.dp)
             } else {
-                // Portrait: wrap 今\n月 as tall rounded rect (no Material min square).
-                PaddingValues(horizontal = 8.dp, vertical = 14.dp)
+                // Portrait 今\n月: same visual density as landscape 14×10, not a tall pill.
+                // Horizontal≈10 / vertical≈8 wraps glyphs tightly (swap would over-pad height).
+                PaddingValues(horizontal = 10.dp, vertical = 8.dp)
             }
             Box(
                 modifier = Modifier
