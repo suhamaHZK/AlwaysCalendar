@@ -17,6 +17,8 @@ import java.util.UUID
 enum class CustomDayKind {
     /** 1日のみ — year/month/day */
     ONCE,
+    /** 期間指定 — year/month/day ～ endYear/endMonth/endDay (inclusive) */
+    DATE_RANGE,
     /** 毎年月日 — month/day */
     YEARLY_MD,
     /** 毎年M月第N曜日 — month/nth/dayOfWeek */
@@ -31,8 +33,6 @@ enum class CustomDayKind {
     MONTHLY_END,
     /** 毎週曜日 — dayOfWeek */
     WEEKLY_DOW,
-    /** 期間指定 — year/month/day ～ endYear/endMonth/endDay (inclusive) */
-    DATE_RANGE,
 }
 
 data class CustomDayRule(
@@ -112,6 +112,7 @@ data class CustomDayRule(
 
         fun kindLabel(kind: CustomDayKind): String = when (kind) {
             CustomDayKind.ONCE -> "1日のみ"
+            CustomDayKind.DATE_RANGE -> "期間指定"
             CustomDayKind.YEARLY_MD -> "毎年 M 月 D 日"
             CustomDayKind.YEARLY_NTH_DOW -> "毎年 M 月第 N W 曜日"
             CustomDayKind.YEARLY_MONTH_END -> "毎年 M 月末"
@@ -119,7 +120,6 @@ data class CustomDayRule(
             CustomDayKind.MONTHLY_NTH_DOW -> "毎月第 N W 曜日"
             CustomDayKind.MONTHLY_END -> "毎月末"
             CustomDayKind.WEEKLY_DOW -> "毎週 W 曜日"
-            CustomDayKind.DATE_RANGE -> "期間指定"
         }
 
         /** True when [date] is the [nth] (1..5) occurrence of [isoDow] in its month. */

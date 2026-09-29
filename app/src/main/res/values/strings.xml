@@ -17,7 +17,7 @@
     <string name="saturday_as_white">土曜日を白で表示</string>
     <string name="sunday_as_white">日曜日を白で表示</string>
     <string name="custom_holidays">カスタム休日</string>
-    <string name="custom_weekdays">カスタム平日</string>
+    <string name="custom_weekdays">カスタム平日(最優先)</string>
     <string name="misoperation_lock">誤操作抑止モード</string>
     <string name="exit_on_unplug">充電器を外したら自動終了</string>
     <string name="allow_auto_sleep">起動中の自動スリープ</string>
