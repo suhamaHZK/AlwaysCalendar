@@ -112,22 +112,29 @@ private fun AddCustomDayDialog(
     var day by remember { mutableIntStateOf(today.dayOfMonth) }
     var nth by remember { mutableIntStateOf(1) }
     var dow by remember { mutableIntStateOf(today.dayOfWeek.value) }
-    var showDatePicker by remember { mutableStateOf(false) }
+    var endYear by remember { mutableIntStateOf(today.year) }
+    var endMonth by remember { mutableIntStateOf(today.monthValue) }
+    var endDay by remember { mutableIntStateOf(today.dayOfMonth) }
+    // null = hidden; "start" / "end" / "once" select which DatePicker is open
+    var datePickerTarget by remember { mutableStateOf<String?>(null) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
         confirmButton = {
             TextButton(
                 onClick = {
-                    val rule = CustomDayRule(
+                    val raw = CustomDayRule(
                         kind = kind,
                         year = year,
                         month = month,
                         day = day,
                         nth = nth,
                         dayOfWeek = dow,
+                        endYear = endYear,
+                        endMonth = endMonth,
+                        endDay = endDay,
                     )
-                    onConfirm(rule)
+                    onConfirm(CustomDayRule.normalized(raw))
                 },
             ) { Text("追加") }
         },
@@ -148,7 +155,7 @@ private fun AddCustomDayDialog(
                 when (kind) {
                     CustomDayKind.ONCE -> {
                         OutlinedButton(
-                            onClick = { showDatePicker = true },
+                            onClick = { datePickerTarget = "once" },
                             modifier = Modifier.fillMaxWidth(),
                         ) {
                             Text("${year}年${month}月${day}日")
@@ -156,7 +163,7 @@ private fun AddCustomDayDialog(
                     }
                     CustomDayKind.YEARLY_MD -> {
                         OutlinedButton(
-                            onClick = { showDatePicker = true },
+                            onClick = { datePickerTarget = "once" },
                             modifier = Modifier.fillMaxWidth(),
                         ) {
                             Text("基準日: ${month}月${day}日")
@@ -172,7 +179,7 @@ private fun AddCustomDayDialog(
                     }
                     CustomDayKind.MONTHLY_D -> {
                         OutlinedButton(
-                            onClick = { showDatePicker = true },
+                            onClick = { datePickerTarget = "once" },
                             modifier = Modifier.fillMaxWidth(),
                         ) {
                             Text("${day}日")
@@ -188,11 +195,38 @@ private fun AddCustomDayDialog(
                     CustomDayKind.WEEKLY_DOW -> {
                         DowDropdown(dow) { dow = it }
                     }
+                    CustomDayKind.DATE_RANGE -> {
+                        // No DateRangePicker in this BOM path → start/end OutlinedButtons stacked.
+                        Text("開始日", color = Color(0xFFAAAAAA))
+                        OutlinedButton(
+                            onClick = { datePickerTarget = "start" },
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Text("%04d/%02d/%02d".format(year, month, day))
+                        }
+                        Text("終了日", color = Color(0xFFAAAAAA))
+                        OutlinedButton(
+                            onClick = { datePickerTarget = "end" },
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Text("%04d/%02d/%02d".format(endYear, endMonth, endDay))
+                        }
+                    }
                 }
 
                 Text(
-                    text = "プレビュー: " + CustomDayRule(
-                        kind = kind, year = year, month = month, day = day, nth = nth, dayOfWeek = dow,
+                    text = "プレビュー: " + CustomDayRule.normalized(
+                        CustomDayRule(
+                            kind = kind,
+                            year = year,
+                            month = month,
+                            day = day,
+                            nth = nth,
+                            dayOfWeek = dow,
+                            endYear = endYear,
+                            endMonth = endMonth,
+                            endDay = endDay,
+                        ),
                     ).displayLabel(),
                     color = Color(0xFF888888),
                 )
@@ -203,13 +237,25 @@ private fun AddCustomDayDialog(
         textContentColor = Color.White,
     )
 
-    if (showDatePicker) {
+    val target = datePickerTarget
+    if (target != null) {
         val zone = ZoneId.systemDefault()
-        val initialMillis = LocalDate.of(year, month, day.coerceIn(1, 28))
-            .atStartOfDay(zone).toInstant().toEpochMilli()
+        val initialDate = when (target) {
+            "end" -> LocalDate.of(
+                endYear,
+                endMonth.coerceIn(1, 12),
+                endDay.coerceIn(1, 28),
+            )
+            else -> LocalDate.of(
+                year,
+                month.coerceIn(1, 12),
+                day.coerceIn(1, 28),
+            )
+        }
+        val initialMillis = initialDate.atStartOfDay(zone).toInstant().toEpochMilli()
         val state = rememberDatePickerState(initialSelectedDateMillis = initialMillis)
         DatePickerDialog(
-            onDismissRequest = { showDatePicker = false },
+            onDismissRequest = { datePickerTarget = null },
             confirmButton = {
                 TextButton(
                     onClick = {
@@ -218,17 +264,26 @@ private fun AddCustomDayDialog(
                             val picked = Instant.ofEpochMilli(millis)
                                 .atZone(ZoneOffset.UTC)
                                 .toLocalDate()
-                            year = picked.year
-                            month = picked.monthValue
-                            day = picked.dayOfMonth
-                            dow = picked.dayOfWeek.value
+                            when (target) {
+                                "end" -> {
+                                    endYear = picked.year
+                                    endMonth = picked.monthValue
+                                    endDay = picked.dayOfMonth
+                                }
+                                else -> {
+                                    year = picked.year
+                                    month = picked.monthValue
+                                    day = picked.dayOfMonth
+                                    dow = picked.dayOfWeek.value
+                                }
+                            }
                         }
-                        showDatePicker = false
+                        datePickerTarget = null
                     },
                 ) { Text("OK") }
             },
             dismissButton = {
-                TextButton(onClick = { showDatePicker = false }) { Text("キャンセル") }
+                TextButton(onClick = { datePickerTarget = null }) { Text("キャンセル") }
             },
         ) {
             DatePicker(state = state)

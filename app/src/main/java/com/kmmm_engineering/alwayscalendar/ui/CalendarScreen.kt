@@ -391,10 +391,9 @@ fun CalendarScreen(
                 fitMonthScalesPortrait(maxWidth, maxHeight)
             }
 
-            // Landscape: if stacked status would intersect left (or center) month, use 1-line.
-            val statusSingleLine = landscapeNow &&
-                statusOverlapsMonthLandscape(maxWidth, maxHeight, centerScale, sideScale)
-            SideEffect { landscapeStatusSingleLine = statusSingleLine }
+            // Landscape + fullscreen (StatusCluster visible): always single-line status.
+            // Overlap prediction removed — landscape ⇒ 1-line unconditionally.
+            SideEffect { landscapeStatusSingleLine = landscapeNow }
 
             if (landscapeNow) {
                 MonthStripLandscape(
@@ -902,49 +901,6 @@ private fun fitMonthScalesLandscape(
     var sideScale = (sideBudget / fullBaseSide) * SideFillFactor
     sideScale = sideScale.coerceAtMost(centerScale).coerceAtLeast(0.01f)
     return centerScale to sideScale
-}
-
-/**
- * Predict whether the stacked (portrait) status cluster intersects the left side month
- * or the center month in landscape. Uses the same geometry as [MonthStripLandscape]
- * (ignores OLED burn-in jitter of a few dp). Intrinsic stacked size is approximate.
- */
-private fun statusOverlapsMonthLandscape(
-    totalW: androidx.compose.ui.unit.Dp,
-    totalH: androidx.compose.ui.unit.Dp,
-    centerScale: Float,
-    sideScale: Float,
-): Boolean {
-    val fullBaseSide = totalH
-    val centerSide = fullBaseSide * centerScale
-    val sideSide = fullBaseSide * sideScale
-    val gap = MonthStripGap
-    val packW = sideSide * 2f + centerSide + gap * 2f
-    val originX = (totalW - packW) / 2f
-
-    // Stacked status intrinsic (time / battery / signal column) — generous for fontScale.
-    val statusW = 52.dp
-    val statusH = 56.dp
-    val statusLeft = 0.dp
-    val statusTop = 0.dp
-    val statusRight = statusLeft + statusW
-    val statusBottom = statusTop + statusH
-
-    fun overlaps(monthLeft: androidx.compose.ui.unit.Dp, monthTop: androidx.compose.ui.unit.Dp, monthSide: androidx.compose.ui.unit.Dp): Boolean {
-        val monthRight = monthLeft + monthSide
-        val monthBottom = monthTop + monthSide
-        val overlapX = statusRight > monthLeft && statusLeft < monthRight
-        val overlapY = statusBottom > monthTop && statusTop < monthBottom
-        return overlapX && overlapY
-    }
-
-    val leftLeft = originX
-    val leftTop = (totalH - sideSide) / 2f
-    if (overlaps(leftLeft, leftTop, sideSide)) return true
-
-    val centerLeft = originX + sideSide + gap
-    val centerTop = (totalH - centerSide) / 2f
-    return overlaps(centerLeft, centerTop, centerSide)
 }
 
 @Composable
