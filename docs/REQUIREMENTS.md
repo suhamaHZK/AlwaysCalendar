@@ -73,6 +73,7 @@
 - 設定: カスタム休日・カスタム平日セクション直下に「エクスポート」「インポート」
 - エクスポート: Pretty JSON（`format`/`formatVersion`/`holidays`/`weekdays`）。共有 Intent（text/plain）＋クリップボード。Keep等へ貼付しやすいテキスト
 - インポート: テキスト貼付。受理 (1) 包み形式 (2) 規則配列のみ→休日/平日をUI指定。`id`省略→新規UUID。未知フィールド無視。不正件はスキップし件数報告。**追加 / 全置換を必須選択**。包みに `holidays`/`weekdays` キーがあれば各カテゴリを選んだモードで適用。全置換は当該カテゴリのみ（他方は消さない）
+- 手書きガイド: [`CUSTOM_DAYS_IMPORT.md`](CUSTOM_DAYS_IMPORT.md)
 
 ## 5. 充電時計と同一仕様（要実装整合）
 
