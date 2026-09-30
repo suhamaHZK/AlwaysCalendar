@@ -134,6 +134,19 @@ class SettingsRepository(private val context: Context) {
         it.copy(customWeekdays = it.customWeekdays.filterNot { r -> r.id == id })
     }
 
+    suspend fun appendCustomHolidays(rules: List<CustomDayRule>) = update {
+        it.copy(customHolidays = it.customHolidays + rules)
+    }
+    suspend fun replaceCustomHolidays(rules: List<CustomDayRule>) = update {
+        it.copy(customHolidays = rules)
+    }
+    suspend fun appendCustomWeekdays(rules: List<CustomDayRule>) = update {
+        it.copy(customWeekdays = it.customWeekdays + rules)
+    }
+    suspend fun replaceCustomWeekdays(rules: List<CustomDayRule>) = update {
+        it.copy(customWeekdays = rules)
+    }
+
     suspend fun loadThresholdAlertSnapshot(): ThresholdAlertSnapshot {
         val prefs = context.dataStore.data.first()
         val seeded = prefs[Keys.alertSeeded] ?: false

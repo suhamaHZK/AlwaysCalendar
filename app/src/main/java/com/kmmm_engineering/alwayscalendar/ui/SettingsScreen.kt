@@ -184,6 +184,11 @@ fun SettingsScreen(
                         onAdd = { rule -> scope.launch { repository.addCustomWeekday(rule) } },
                         onRemove = { id -> scope.launch { repository.removeCustomWeekday(id) } },
                     )
+                    CustomDayTransferSection(
+                        holidays = settings.customHolidays,
+                        weekdays = settings.customWeekdays,
+                        repository = repository,
+                    )
 
                     SwitchRow(
                         label = stringResource(R.string.fullscreen_enabled),
