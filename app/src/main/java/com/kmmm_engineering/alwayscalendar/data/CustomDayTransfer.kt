@@ -49,6 +49,7 @@ object CustomDayTransfer {
         val weekdaysAdded: Int = 0,
         val weekdaysReplaced: Int = 0,
         val skipped: Int = 0,
+        val duplicates: Int = 0,
     ) {
         fun toastMessage(): String {
             val parts = mutableListOf<String>()
@@ -56,6 +57,7 @@ object CustomDayTransfer {
             if (holidaysAdded > 0) parts += "休日${holidaysAdded}件追加"
             if (weekdaysReplaced > 0) parts += "平日を${weekdaysReplaced}件に置換"
             if (weekdaysAdded > 0) parts += "平日${weekdaysAdded}件追加"
+            if (duplicates > 0) parts += "重複${duplicates}件"
             if (parts.isEmpty() && skipped == 0) parts += "適用する規則がありません"
             var msg = parts.joinToString("、")
             if (skipped > 0) {
@@ -187,6 +189,58 @@ object CustomDayTransfer {
 
     private fun isValidYmd(year: Int, month: Int, day: Int): Boolean =
         runCatching { LocalDate.of(year, month, day) }.isSuccess
+
+    /**
+     * Pattern equality for append-import dedup: same [CustomDayKind] and the
+     * fields that kind uses. [CustomDayRule.id] is never compared.
+     */
+    fun samePattern(a: CustomDayRule, b: CustomDayRule): Boolean {
+        if (a.kind != b.kind) return false
+        return when (a.kind) {
+            CustomDayKind.ONCE ->
+                a.year == b.year && a.month == b.month && a.day == b.day
+            CustomDayKind.DATE_RANGE ->
+                a.year == b.year && a.month == b.month && a.day == b.day &&
+                    a.endYear == b.endYear && a.endMonth == b.endMonth && a.endDay == b.endDay
+            CustomDayKind.YEARLY_MD ->
+                a.month == b.month && a.day == b.day
+            CustomDayKind.YEARLY_NTH_DOW ->
+                a.month == b.month && a.nth == b.nth && a.dayOfWeek == b.dayOfWeek
+            CustomDayKind.YEARLY_MONTH_END ->
+                a.month == b.month
+            CustomDayKind.MONTHLY_D ->
+                a.day == b.day
+            CustomDayKind.MONTHLY_NTH_DOW ->
+                a.nth == b.nth && a.dayOfWeek == b.dayOfWeek
+            CustomDayKind.MONTHLY_END ->
+                true
+            CustomDayKind.WEEKLY_DOW ->
+                a.dayOfWeek == b.dayOfWeek
+        }
+    }
+
+    data class AppendFilterResult(
+        val toAdd: List<CustomDayRule>,
+        val duplicates: Int,
+    )
+
+    /**
+     * Keep only rules whose pattern is not already in [existing] or earlier
+     * in [incoming]. Counts discarded items as duplicates.
+     */
+    fun filterAppendDuplicates(
+        existing: List<CustomDayRule>,
+        incoming: List<CustomDayRule>,
+    ): AppendFilterResult {
+        val accepted = mutableListOf<CustomDayRule>()
+        var duplicates = 0
+        for (rule in incoming) {
+            val dup = existing.any { samePattern(it, rule) } ||
+                accepted.any { samePattern(it, rule) }
+            if (dup) duplicates++ else accepted.add(rule)
+        }
+        return AppendFilterResult(toAdd = accepted, duplicates = duplicates)
+    }
 
     private fun rulesToJsonArray(rules: List<CustomDayRule>): JSONArray {
         val arr = JSONArray()

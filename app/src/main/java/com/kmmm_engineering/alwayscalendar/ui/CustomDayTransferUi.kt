@@ -299,6 +299,13 @@ private suspend fun applyImport(
     var weekdaysAdded = 0
     var weekdaysReplaced = 0
     var skipped = 0
+    var duplicates = 0
+
+    val current = if (mode == CustomDayTransfer.ApplyMode.APPEND) {
+        repository.getSettingsOnce()
+    } else {
+        null
+    }
 
     when (parse) {
         is CustomDayTransfer.ParseResult.Package -> {
@@ -306,8 +313,15 @@ private suspend fun applyImport(
                 skipped += batch.skipped
                 when (mode) {
                     CustomDayTransfer.ApplyMode.APPEND -> {
-                        repository.appendCustomHolidays(batch.rules)
-                        holidaysAdded = batch.rules.size
+                        val filtered = CustomDayTransfer.filterAppendDuplicates(
+                            current!!.customHolidays,
+                            batch.rules,
+                        )
+                        if (filtered.toAdd.isNotEmpty()) {
+                            repository.appendCustomHolidays(filtered.toAdd)
+                        }
+                        holidaysAdded = filtered.toAdd.size
+                        duplicates += filtered.duplicates
                     }
                     CustomDayTransfer.ApplyMode.REPLACE -> {
                         repository.replaceCustomHolidays(batch.rules)
@@ -319,8 +333,15 @@ private suspend fun applyImport(
                 skipped += batch.skipped
                 when (mode) {
                     CustomDayTransfer.ApplyMode.APPEND -> {
-                        repository.appendCustomWeekdays(batch.rules)
-                        weekdaysAdded = batch.rules.size
+                        val filtered = CustomDayTransfer.filterAppendDuplicates(
+                            current!!.customWeekdays,
+                            batch.rules,
+                        )
+                        if (filtered.toAdd.isNotEmpty()) {
+                            repository.appendCustomWeekdays(filtered.toAdd)
+                        }
+                        weekdaysAdded = filtered.toAdd.size
+                        duplicates += filtered.duplicates
                     }
                     CustomDayTransfer.ApplyMode.REPLACE -> {
                         repository.replaceCustomWeekdays(batch.rules)
@@ -337,8 +358,15 @@ private suspend fun applyImport(
                 CustomDayTransfer.TargetCategory.HOLIDAYS -> {
                     when (mode) {
                         CustomDayTransfer.ApplyMode.APPEND -> {
-                            repository.appendCustomHolidays(batch.rules)
-                            holidaysAdded = batch.rules.size
+                            val filtered = CustomDayTransfer.filterAppendDuplicates(
+                                current!!.customHolidays,
+                                batch.rules,
+                            )
+                            if (filtered.toAdd.isNotEmpty()) {
+                                repository.appendCustomHolidays(filtered.toAdd)
+                            }
+                            holidaysAdded = filtered.toAdd.size
+                            duplicates += filtered.duplicates
                         }
                         CustomDayTransfer.ApplyMode.REPLACE -> {
                             repository.replaceCustomHolidays(batch.rules)
@@ -349,8 +377,15 @@ private suspend fun applyImport(
                 CustomDayTransfer.TargetCategory.WEEKDAYS -> {
                     when (mode) {
                         CustomDayTransfer.ApplyMode.APPEND -> {
-                            repository.appendCustomWeekdays(batch.rules)
-                            weekdaysAdded = batch.rules.size
+                            val filtered = CustomDayTransfer.filterAppendDuplicates(
+                                current!!.customWeekdays,
+                                batch.rules,
+                            )
+                            if (filtered.toAdd.isNotEmpty()) {
+                                repository.appendCustomWeekdays(filtered.toAdd)
+                            }
+                            weekdaysAdded = filtered.toAdd.size
+                            duplicates += filtered.duplicates
                         }
                         CustomDayTransfer.ApplyMode.REPLACE -> {
                             repository.replaceCustomWeekdays(batch.rules)
@@ -369,5 +404,6 @@ private suspend fun applyImport(
         weekdaysAdded = weekdaysAdded,
         weekdaysReplaced = weekdaysReplaced,
         skipped = skipped,
+        duplicates = duplicates,
     )
 }
