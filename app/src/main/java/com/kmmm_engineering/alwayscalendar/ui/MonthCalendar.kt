@@ -6,7 +6,6 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -92,16 +91,26 @@ private const val RatioYearW = 29
 private const val RatioMonthNumW = 12
 private const val RatioMonthNameW = 29
 
+/** Date numerals, month numeral, weekday labels: fraction of the cell on each axis. */
+private const val GlyphFill = 0.9f
+
+/** Year and English month name only — slightly under the other glyphs. */
+private const val HeaderWordFill = 0.8f
+
 private fun Dp.part(numerator: Int): Dp = this * (numerator.toFloat() / RatioTotal.toFloat())
 
 /**
  * Single-month calendar block: header (year / month# / English name), weekday row, date grid.
  * Only days of [yearMonth] are shown; out-of-month cells are blank.
  *
- * The block is a **1:1 square** maximized inside the incoming constraints (the bounded
- * axis when only one is bounded, otherwise the shorter side). Regions are fractions of
- * that square, not sp/dp content sizes, so dpi and resolution do not change the ratios.
- * Glyphs are fitted to their cells the same way. Parent may still apply [Modifier.uniformScale].
+ * The block is a **1:1 square** maximized to the bounded axis (or the shorter side when
+ * both are bounded). Measured size is that square — never the incoming max box. The
+ * portrait/landscape strip places prev/center/next from this natural square (center
+ * maximized in the usable rect, neighbors scaled into the leftover). Filling max
+ * constraints would make every month as tall as the strip and they overlap.
+ * Regions are fractions of the square, not sp/dp content sizes, so dpi and resolution
+ * do not change the ratios. Glyphs fit their cells (year and English month at 80% of
+ * the cell, everything else at 90%). Parent may still apply [Modifier.uniformScale].
  */
 @Composable
 fun MonthCalendar(
@@ -129,12 +138,9 @@ fun MonthCalendar(
             constraints.hasBoundedHeight -> maxHeight
             else -> 0.dp
         }
-        val frameModifier = if (constraints.hasBoundedWidth && constraints.hasBoundedHeight) {
-            Modifier.fillMaxSize()
-        } else {
-            Modifier.size(side)
-        }
-        Box(modifier = frameModifier, contentAlignment = Alignment.Center) {
+        // size(side), not fillMaxSize(): a loose max (the strip) must not become the
+        // measured height. The parent slots months using this square.
+        Box(modifier = Modifier.size(side), contentAlignment = Alignment.Center) {
             MonthCalendarSquare(
                 side = side,
                 yearText = yearText,
@@ -171,9 +177,9 @@ private fun MonthCalendarSquare(
     val yearW = side.part(RatioYearW)
     val monthNumW = side.part(RatioMonthNumW)
     val monthNameW = side.part(RatioMonthNameW)
-    val yearSp = fitTextSize(yearW, headerH, yearText, FontWeight.Normal)
-    val monthNumSp = fitTextSize(monthNumW, headerH, monthNumText, FontWeight.Bold)
-    val monthNameSp = fitTextSize(monthNameW, headerH, englishMonth, FontWeight.Normal)
+    val yearSp = fitTextSize(yearW, headerH, yearText, FontWeight.Normal, fill = HeaderWordFill)
+    val monthNumSp = fitTextSize(monthNumW, headerH, monthNumText, FontWeight.Bold, fill = GlyphFill)
+    val monthNameSp = fitTextSize(monthNameW, headerH, englishMonth, FontWeight.Normal, fill = HeaderWordFill)
     val daySp = dayNumberFontSize(minOf(colW, dateRowH))
     val cellShort = minOf(colW, dateRowH)
 
@@ -203,7 +209,7 @@ private fun MonthCalendarSquare(
         }
         Row(modifier = Modifier.fillMaxWidth().weight(RatioWeekdayH.toFloat())) {
             labels.forEachIndexed { index, label ->
-                val labelSp = fitTextSize(colW, weekdayH, label, FontWeight.Normal)
+                val labelSp = fitTextSize(colW, weekdayH, label, FontWeight.Normal, fill = GlyphFill)
                 FittedLabel(
                     text = label,
                     color = weekdayLabelColor(
@@ -268,6 +274,7 @@ private fun FittedLabel(
 /**
  * Fit [sample] inside [cellWidth]×[cellHeight] at [fill] of each axis.
  * Resulting pixel size follows the cell, not density or font scale.
+ * Year / English month use [HeaderWordFill] (0.8); other glyphs use [GlyphFill] (0.9).
  */
 @Composable
 private fun fitTextSize(
@@ -304,7 +311,7 @@ private fun dayNumberFontSize(cellShortSide: Dp): TextUnit {
     val density = LocalDensity.current
     val textMeasurer = rememberTextMeasurer()
     return remember(cellShortSide, density.density, density.fontScale, textMeasurer) {
-        val targetPx = with(density) { cellShortSide.toPx() } * 0.9f
+        val targetPx = with(density) { cellShortSide.toPx() } * GlyphFill
         if (targetPx <= 0f) return@remember 1.sp
         val probeSp = 100.sp
         val layout = textMeasurer.measure(
