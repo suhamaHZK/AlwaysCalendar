@@ -44,6 +44,9 @@
     <string name="discord_test_empty">先にWebhook URLを入力してください</string>
     <string name="discord_test_ok">テストメッセージを送信しました</string>
     <string name="discord_test_fail">テストメッセージの送信に失敗しました</string>
+    <string name="discord_icon_get">Webhook用のアイコンを入手</string>
+    <string name="discord_icon_save_ok">アイコンをフォトに保存しました</string>
+    <string name="discord_icon_save_fail">アイコンの保存に失敗しました</string>
     <string name="discord_discharge">Discord通知（放電中に下記まで減少したら通知）</string>
     <string name="discord_charge">Discord通知（充電中に下記まで回復したら通知）</string>
     <string name="discord_discharge_msg">バッテリー %1$d%%（放電中）</string>

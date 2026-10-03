@@ -50,6 +50,7 @@ import com.kmmm_engineering.alwayscalendar.data.SettingsRepository
 import com.kmmm_engineering.alwayscalendar.data.UserSettings
 import com.kmmm_engineering.alwayscalendar.data.WeekStart
 import com.kmmm_engineering.alwayscalendar.discord.DiscordNotifier
+import com.kmmm_engineering.alwayscalendar.util.DiscordIconSaver
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -71,6 +72,8 @@ fun SettingsScreen(
     val testOkMsg = stringResource(R.string.discord_test_ok)
     val testFailMsg = stringResource(R.string.discord_test_fail)
     val testContent = stringResource(R.string.discord_test_msg)
+    val iconOkMsg = stringResource(R.string.discord_icon_save_ok)
+    val iconFailMsg = stringResource(R.string.discord_icon_save_fail)
 
     Scaffold(
         modifier = modifier.fillMaxSize(),
@@ -247,6 +250,19 @@ fun SettingsScreen(
                         modifier = Modifier.fillMaxWidth(),
                     ) {
                         Text(stringResource(R.string.discord_test_send))
+                    }
+                    Button(
+                        onClick = {
+                            val ok = DiscordIconSaver.saveToGallery(context)
+                            Toast.makeText(
+                                context,
+                                if (ok) iconOkMsg else iconFailMsg,
+                                Toast.LENGTH_SHORT,
+                            ).show()
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text(stringResource(R.string.discord_icon_get))
                     }
 
                     SectionTitle(stringResource(R.string.discord_discharge))
