@@ -14,11 +14,11 @@ android {
         applicationId = "com.kmmm_engineering.alwayscalendar"
         minSdk = 29
         targetSdk = 36
-        versionCode = 10
-        versionName = "0.0.4"
+        versionCode = 11
+        versionName = "0.0.5"
 
-        // Sideload / debug: APP_DEBUG="001" → settings shows "0.0.4 debug001".
-        // Store AAB: pass -PappDebug= (empty) so display is "ver.0.0.4".
+        // Sideload / debug: APP_DEBUG="001" → settings shows "0.0.5 debug001".
+        // Store AAB: pass -PappDebug= (empty) so display is "ver.0.0.5".
         val appDebug = (findProperty("appDebug") as String?)?.trim() ?: "001"
         buildConfigField("String", "APP_DEBUG", "\"$appDebug\"")
 

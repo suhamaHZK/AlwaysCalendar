@@ -1,17 +1,14 @@
 package com.kmmm_engineering.alwayscalendar.ui
 
 import androidx.compose.foundation.border
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -22,9 +19,11 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
@@ -34,7 +33,6 @@ import com.kmmm_engineering.alwayscalendar.data.WeekStart
 import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.YearMonth
-import java.time.format.TextStyle
 import java.util.Locale
 import kotlin.math.max
 import kotlin.math.roundToInt
@@ -80,12 +78,30 @@ fun resolveDayNumeralColor(
 }
 
 /**
+ * Ratios from the layout sheet (date-column width = 1). Sum is the 7×7 square:
+ * header 1.1, weekday row 0.5, six date rows × 0.9.
+ * Widths: year 2.9 + month numeral 1.2 + English month 2.9 = 7; each weekday/date column 1.
+ * Stored as integer parts of 70 so header splits and the 7 columns share one edge.
+ */
+private const val RatioTotal = 70
+private const val RatioHeaderH = 11
+private const val RatioWeekdayH = 5
+private const val RatioDateRowH = 9
+private const val RatioColW = 10
+private const val RatioYearW = 29
+private const val RatioMonthNumW = 12
+private const val RatioMonthNameW = 29
+
+private fun Dp.part(numerator: Int): Dp = this * (numerator.toFloat() / RatioTotal.toFloat())
+
+/**
  * Single-month calendar block: header (year / month# / English name), weekday row, date grid.
  * Only days of [yearMonth] are shown; out-of-month cells are blank.
  *
- * Lays out in a **1:1 square** container (width = height). Header + weekday + 6-row
- * grid are packed tightly inside the square (see docs/reference/8月.png).
- * Overall size is controlled by the parent via [Modifier.uniformScale].
+ * The block is a **1:1 square** maximized inside the incoming constraints (the bounded
+ * axis when only one is bounded, otherwise the shorter side). Regions are fractions of
+ * that square, not sp/dp content sizes, so dpi and resolution do not change the ratios.
+ * Glyphs are fitted to their cells the same way. Parent may still apply [Modifier.uniformScale].
  */
 @Composable
 fun MonthCalendar(
@@ -96,61 +112,99 @@ fun MonthCalendar(
     colorOptions: DayColorOptions = DayColorOptions(),
     modifier: Modifier = Modifier,
 ) {
-    val yearSp = 11.sp
-    val monthNumSp = 28.sp
-    val monthNameSp = 13.sp
-    val weekdaySp = 11.sp
-    val headerGap = 2.dp
-    val gridGap = 1.dp
-
     val labels = if (weekStart == WeekStart.SUNDAY) WeekdayLabelsSunStart else WeekdayLabelsMonStart
     val englishMonth = remember(yearMonth) {
-        yearMonth.month.getDisplayName(TextStyle.FULL, Locale.ENGLISH)
+        yearMonth.month.getDisplayName(java.time.format.TextStyle.FULL, Locale.ENGLISH)
     }
     val days = remember(yearMonth, weekStart) {
         buildMonthCells(yearMonth, weekStart)
     }
+    val yearText = yearMonth.year.toString()
+    val monthNumText = yearMonth.monthValue.toString()
 
-    Column(
-        modifier = modifier
-            .fillMaxWidth()
-            .aspectRatio(1f),
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween,
-        ) {
-            Text(
-                text = yearMonth.year.toString(),
-                color = Color.White,
+    BoxWithConstraints(modifier = modifier) {
+        val side = when {
+            constraints.hasBoundedWidth && constraints.hasBoundedHeight -> minOf(maxWidth, maxHeight)
+            constraints.hasBoundedWidth -> maxWidth
+            constraints.hasBoundedHeight -> maxHeight
+            else -> 0.dp
+        }
+        val frameModifier = if (constraints.hasBoundedWidth && constraints.hasBoundedHeight) {
+            Modifier.fillMaxSize()
+        } else {
+            Modifier.size(side)
+        }
+        Box(modifier = frameModifier, contentAlignment = Alignment.Center) {
+            MonthCalendarSquare(
+                side = side,
+                yearText = yearText,
+                monthNumText = monthNumText,
+                englishMonth = englishMonth,
+                labels = labels,
+                days = days,
+                weekStart = weekStart,
+                today = today,
+                isHoliday = isHoliday,
+                colorOptions = colorOptions,
+            )
+        }
+    }
+}
+
+@Composable
+private fun MonthCalendarSquare(
+    side: Dp,
+    yearText: String,
+    monthNumText: String,
+    englishMonth: String,
+    labels: List<String>,
+    days: List<MonthCell>,
+    weekStart: WeekStart,
+    today: LocalDate,
+    isHoliday: (LocalDate) -> Boolean,
+    colorOptions: DayColorOptions,
+) {
+    val headerH = side.part(RatioHeaderH)
+    val weekdayH = side.part(RatioWeekdayH)
+    val dateRowH = side.part(RatioDateRowH)
+    val colW = side.part(RatioColW)
+    val yearW = side.part(RatioYearW)
+    val monthNumW = side.part(RatioMonthNumW)
+    val monthNameW = side.part(RatioMonthNameW)
+    val yearSp = fitTextSize(yearW, headerH, yearText, FontWeight.Normal)
+    val monthNumSp = fitTextSize(monthNumW, headerH, monthNumText, FontWeight.Bold)
+    val monthNameSp = fitTextSize(monthNameW, headerH, englishMonth, FontWeight.Normal)
+    val daySp = dayNumberFontSize(minOf(colW, dateRowH))
+    val cellShort = minOf(colW, dateRowH)
+
+    Column(modifier = Modifier.size(side)) {
+        Row(modifier = Modifier.fillMaxWidth().weight(RatioHeaderH.toFloat())) {
+            FittedLabel(
+                text = yearText,
                 fontSize = yearSp,
                 fontWeight = FontWeight.Normal,
-                modifier = Modifier.weight(1f),
                 textAlign = TextAlign.Start,
+                modifier = Modifier.weight(RatioYearW.toFloat()).fillMaxHeight(),
             )
-            Text(
-                text = yearMonth.monthValue.toString(),
-                color = Color.White,
+            FittedLabel(
+                text = monthNumText,
                 fontSize = monthNumSp,
                 fontWeight = FontWeight.Bold,
                 textAlign = TextAlign.Center,
+                modifier = Modifier.weight(RatioMonthNumW.toFloat()).fillMaxHeight(),
             )
-            Text(
+            FittedLabel(
                 text = englishMonth,
-                color = Color.White,
                 fontSize = monthNameSp,
                 fontWeight = FontWeight.Normal,
-                modifier = Modifier.weight(1f),
                 textAlign = TextAlign.End,
+                modifier = Modifier.weight(RatioMonthNameW.toFloat()).fillMaxHeight(),
             )
         }
-        Spacer(Modifier.height(headerGap))
-
-        Row(modifier = Modifier.fillMaxWidth()) {
+        Row(modifier = Modifier.fillMaxWidth().weight(RatioWeekdayH.toFloat())) {
             labels.forEachIndexed { index, label ->
-                Text(
+                val labelSp = fitTextSize(colW, weekdayH, label, FontWeight.Normal)
+                FittedLabel(
                     text = label,
                     color = weekdayLabelColor(
                         index,
@@ -158,40 +212,90 @@ fun MonthCalendar(
                         colorOptions.saturdayAsWhite,
                         colorOptions.sundayAsWhite,
                     ),
-                    fontSize = weekdaySp,
+                    fontSize = labelSp,
+                    fontWeight = FontWeight.Normal,
                     textAlign = TextAlign.Center,
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier.weight(RatioColW.toFloat()).fillMaxHeight(),
                 )
             }
         }
-        Spacer(Modifier.height(gridGap))
-
-        BoxWithConstraints(modifier = Modifier.weight(1f).fillMaxWidth()) {
-            val cellShortSide = minOf(maxWidth / 7f, maxHeight / 6f)
-            val daySp = dayNumberFontSize(cellShortSide)
-            Column(modifier = Modifier.fillMaxSize()) {
-                days.chunked(7).forEach { week ->
-                    Row(
-                        modifier = Modifier
-                            .weight(1f)
-                            .fillMaxWidth(),
-                    ) {
-                        week.forEach { cell ->
-                            DayCell(
-                                cell = cell,
-                                today = today,
-                                isHoliday = isHoliday,
-                                colorOptions = colorOptions,
-                                daySp = daySp,
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .fillMaxHeight(),
-                            )
-                        }
-                    }
+        days.chunked(7).forEach { week ->
+            Row(modifier = Modifier.fillMaxWidth().weight(RatioDateRowH.toFloat())) {
+                week.forEach { cell ->
+                    DayCell(
+                        cell = cell,
+                        today = today,
+                        isHoliday = isHoliday,
+                        colorOptions = colorOptions,
+                        daySp = daySp,
+                        cellShortSide = cellShort,
+                        modifier = Modifier.weight(RatioColW.toFloat()).fillMaxHeight(),
+                    )
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun FittedLabel(
+    text: String,
+    fontSize: TextUnit,
+    fontWeight: FontWeight,
+    textAlign: TextAlign,
+    modifier: Modifier = Modifier,
+    color: Color = Color.White,
+) {
+    val alignment = when (textAlign) {
+        TextAlign.End, TextAlign.Right -> Alignment.CenterEnd
+        TextAlign.Center -> Alignment.Center
+        else -> Alignment.CenterStart
+    }
+    Box(modifier = modifier, contentAlignment = alignment) {
+        Text(
+            text = text,
+            color = color,
+            fontSize = fontSize,
+            fontWeight = fontWeight,
+            textAlign = textAlign,
+            maxLines = 1,
+            softWrap = false,
+            overflow = TextOverflow.Clip,
+        )
+    }
+}
+
+/**
+ * Fit [sample] inside [cellWidth]×[cellHeight] at [fill] of each axis.
+ * Resulting pixel size follows the cell, not density or font scale.
+ */
+@Composable
+private fun fitTextSize(
+    cellWidth: Dp,
+    cellHeight: Dp,
+    sample: String,
+    fontWeight: FontWeight,
+    fill: Float = 0.9f,
+): TextUnit {
+    val density = LocalDensity.current
+    val textMeasurer = rememberTextMeasurer()
+    return remember(cellWidth, cellHeight, sample, fontWeight, fill, density.density, density.fontScale, textMeasurer) {
+        val targetW = with(density) { cellWidth.toPx() } * fill
+        val targetH = with(density) { cellHeight.toPx() } * fill
+        if (targetW <= 0f || targetH <= 0f || sample.isEmpty()) return@remember 1.sp
+        val probeSp = 100.sp
+        val layout = textMeasurer.measure(
+            text = sample,
+            style = TextStyle(fontSize = probeSp, fontWeight = fontWeight),
+            softWrap = false,
+            maxLines = 1,
+        )
+        val w = layout.size.width.toFloat()
+        val h = layout.size.height.toFloat()
+        if (w <= 0f || h <= 0f) return@remember 1.sp
+        val scale = minOf(targetW / w, targetH / h)
+        val probePx = with(density) { probeSp.toPx() }
+        with(density) { (probePx * scale).toSp() }
     }
 }
 
@@ -201,14 +305,16 @@ private fun dayNumberFontSize(cellShortSide: Dp): TextUnit {
     val textMeasurer = rememberTextMeasurer()
     return remember(cellShortSide, density.density, density.fontScale, textMeasurer) {
         val targetPx = with(density) { cellShortSide.toPx() } * 0.9f
-        if (targetPx <= 0f) return@remember 16.sp
+        if (targetPx <= 0f) return@remember 1.sp
         val probeSp = 100.sp
         val layout = textMeasurer.measure(
             text = "00",
-            style = androidx.compose.ui.text.TextStyle(fontSize = probeSp, fontWeight = FontWeight.Normal),
+            style = TextStyle(fontSize = probeSp, fontWeight = FontWeight.Normal),
+            softWrap = false,
+            maxLines = 1,
         )
         val measured = max(layout.size.width, layout.size.height).toFloat()
-        if (measured <= 0f) return@remember 16.sp
+        if (measured <= 0f) return@remember 1.sp
         val probePx = with(density) { probeSp.toPx() }
         with(density) { (probePx * (targetPx / measured)).toSp() }
     }
@@ -221,17 +327,21 @@ private fun DayCell(
     isHoliday: (LocalDate) -> Boolean,
     colorOptions: DayColorOptions,
     daySp: TextUnit,
+    cellShortSide: Dp,
     modifier: Modifier = Modifier,
 ) {
     val date = cell.date
     val isToday = date != null && date == today
+    // Former 1.5.dp stroke / 6.dp corner, as fractions of the date-cell short side.
+    val todayStroke = cellShortSide * 0.04f
+    val todayCorner = cellShortSide * 0.15f
     Box(
         modifier = modifier.then(
             if (isToday) {
                 Modifier.border(
-                    width = 1.5.dp,
+                    width = todayStroke,
                     color = ColorTodayBorder,
-                    shape = RoundedCornerShape(6.dp),
+                    shape = RoundedCornerShape(todayCorner),
                 )
             } else {
                 Modifier
