@@ -94,7 +94,10 @@ private const val RatioMonthNameW = 29
 /** Date numerals, month numeral, weekday labels: fraction of the cell on each axis. */
 private const val GlyphFill = 0.9f
 
-/** Year and English month name only — slightly under the other glyphs. */
+/**
+ * Year fits its own cell at this fraction. English month names share one size:
+ * the smallest of the 12 full names that still fits this fraction of the name cell.
+ */
 private const val HeaderWordFill = 0.8f
 
 private fun Dp.part(numerator: Int): Dp = this * (numerator.toFloat() / RatioTotal.toFloat())
@@ -109,8 +112,9 @@ private fun Dp.part(numerator: Int): Dp = this * (numerator.toFloat() / RatioTot
  * maximized in the usable rect, neighbors scaled into the leftover). Filling max
  * constraints would make every month as tall as the strip and they overlap.
  * Regions are fractions of the square, not sp/dp content sizes, so dpi and resolution
- * do not change the ratios. Glyphs fit their cells (year and English month at 80% of
- * the cell, everything else at 90%). Parent may still apply [Modifier.uniformScale].
+ * do not change the ratios. Glyphs fit their cells (year at 80% of its cell;
+ * English month names share the smallest 80% fit among the 12 names; everything
+ * else at 90%). Parent may still apply [Modifier.uniformScale].
  */
 @Composable
 fun MonthCalendar(
@@ -179,7 +183,7 @@ private fun MonthCalendarSquare(
     val monthNameW = side.part(RatioMonthNameW)
     val yearSp = fitTextSize(yearW, headerH, yearText, FontWeight.Normal, fill = HeaderWordFill)
     val monthNumSp = fitTextSize(monthNumW, headerH, monthNumText, FontWeight.Bold, fill = GlyphFill)
-    val monthNameSp = fitTextSize(monthNameW, headerH, englishMonth, FontWeight.Normal, fill = HeaderWordFill)
+    val monthNameSp = sharedEnglishMonthNameSize(monthNameW, headerH)
     val daySp = dayNumberFontSize(minOf(colW, dateRowH))
     val cellShort = minOf(colW, dateRowH)
 
@@ -274,7 +278,8 @@ private fun FittedLabel(
 /**
  * Fit [sample] inside [cellWidth]×[cellHeight] at [fill] of each axis.
  * Resulting pixel size follows the cell, not density or font scale.
- * Year / English month use [HeaderWordFill] (0.8); other glyphs use [GlyphFill] (0.9).
+ * Year uses [HeaderWordFill] (0.8) on its own string; other glyphs use [GlyphFill] (0.9).
+ * English month names do not use this per string — see [sharedEnglishMonthNameSize].
  */
 @Composable
 private fun fitTextSize(
@@ -303,6 +308,48 @@ private fun fitTextSize(
         val scale = minOf(targetW / w, targetH / h)
         val probePx = with(density) { probeSp.toPx() }
         with(density) { (probePx * scale).toSp() }
+    }
+}
+
+/** Full English month names, January–December, in the same font as the header label. */
+private val EnglishFullMonthNames: List<String> = (1..12).map { month ->
+    java.time.Month.of(month).getDisplayName(java.time.format.TextStyle.FULL, Locale.ENGLISH)
+}
+
+/**
+ * One size for every English month name: probe each of the 12 names with the same
+ * font ([FontWeight.Normal], no family override) and keep the smallest scale that
+ * fits [HeaderWordFill] of [cellWidth]×[cellHeight] on both axes. Usually September.
+ */
+@Composable
+private fun sharedEnglishMonthNameSize(
+    cellWidth: Dp,
+    cellHeight: Dp,
+): TextUnit {
+    val density = LocalDensity.current
+    val textMeasurer = rememberTextMeasurer()
+    return remember(cellWidth, cellHeight, density.density, density.fontScale, textMeasurer) {
+        val targetW = with(density) { cellWidth.toPx() } * HeaderWordFill
+        val targetH = with(density) { cellHeight.toPx() } * HeaderWordFill
+        if (targetW <= 0f || targetH <= 0f) return@remember 1.sp
+        val probeSp = 100.sp
+        var minScale = Float.POSITIVE_INFINITY
+        for (name in EnglishFullMonthNames) {
+            val layout = textMeasurer.measure(
+                text = name,
+                style = TextStyle(fontSize = probeSp, fontWeight = FontWeight.Normal),
+                softWrap = false,
+                maxLines = 1,
+            )
+            val w = layout.size.width.toFloat()
+            val h = layout.size.height.toFloat()
+            if (w <= 0f || h <= 0f) continue
+            val scale = minOf(targetW / w, targetH / h)
+            if (scale < minScale) minScale = scale
+        }
+        if (!minScale.isFinite()) return@remember 1.sp
+        val probePx = with(density) { probeSp.toPx() }
+        with(density) { (probePx * minScale).toSp() }
     }
 }
 
