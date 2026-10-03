@@ -14,8 +14,9 @@ package com.kmmm_engineering.alwayscalendar.discord
  * - [restore]: forces unseeded so the first [check] seeds from the live battery without
  *   treating a pre-death gap as a cross (legacy / cold-start quiet mode).
  * - [restoreKeepingSeed]: if persisted lastPercent is valid and seeded, keeps seeded so a
- *   cross between the last persisted sample and the current sample CAN fire (widget /
- *   background polling via [ThresholdAlertEvaluator]).
+ *   cross between the last persisted sample and the current sample CAN fire.
+ *   [ThresholdAlertEvaluator] uses this only after the first evaluation in the process.
+ *   The first call uses [restore] so a gap while the process was dead does not notify.
  *
  * While running: real crosses fire once; leave the alert zone to re-arm; threshold
  * setting changes re-arm. OFF thresholds (-1) never fire. Empty webhook is handled
@@ -54,7 +55,7 @@ class ThresholdFireTracker {
     /**
      * Load persisted latch fields. If [ThresholdAlertSnapshot.lastPercent] is valid and
      * the snapshot was seeded, keep [seeded]=true so a cross since the last sample can fire.
-     * Used by background / widget polling.
+     * Used by [ThresholdAlertEvaluator] on the second and later evaluations in this process.
      */
     fun restoreKeepingSeed(snapshot: ThresholdAlertSnapshot) {
         applySnapshotFields(snapshot)

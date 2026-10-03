@@ -14,12 +14,12 @@ android {
         applicationId = "com.kmmm_engineering.alwayscalendar"
         minSdk = 29
         targetSdk = 36
-        versionCode = 13
-        versionName = "0.0.5"
+        versionCode = 14
+        versionName = "0.0.6"
 
-        // Sideload / debug: APP_DEBUG="003" → settings shows "0.0.5 debug003".
-        // Store AAB: pass -PappDebug= (empty) so display is "ver.0.0.5".
-        val appDebug = (findProperty("appDebug") as String?)?.trim() ?: "003"
+        // Sideload / debug: APP_DEBUG="001" → settings shows "0.0.6 debug001".
+        // Store AAB: pass -PappDebug= (empty) so display is "ver.0.0.6".
+        val appDebug = (findProperty("appDebug") as String?)?.trim() ?: "001"
         buildConfigField("String", "APP_DEBUG", "\"$appDebug\"")
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
