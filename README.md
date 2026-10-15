@@ -47,6 +47,10 @@ Requires **JDK 17+** and **Android SDK 36**.
 - カスタム休日/平日インポート JSON（手書き）: [`docs/CUSTOM_DAYS_IMPORT.md`](docs/CUSTOM_DAYS_IMPORT.md)
 - 参考レイアウト画像: [`docs/reference/`](docs/reference/)
 
+## Privacy
+
+[Privacy Policy / プライバシーポリシー](PRIVACY.md)
+
 ## License
 
 本リポジトリのソースは **MIT License** です。詳細は [`LICENSE`](LICENSE) を参照してください。
