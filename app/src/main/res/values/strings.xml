@@ -16,6 +16,8 @@
     <string name="holidays_as_white">祝日を白で表示</string>
     <string name="saturday_as_white">土曜日を白で表示</string>
     <string name="sunday_as_white">日曜日を白で表示</string>
+    <string name="show_rokuyo">六曜を表示</string>
+    <string name="show_holiday_name">祝日名を表示</string>
     <string name="custom_holidays">カスタム休日</string>
     <string name="custom_weekdays">カスタム平日(最優先)</string>
     <string name="custom_days_transfer">カスタム休日/平日のエクスポート・インポート</string>
@@ -55,6 +57,7 @@
     <string name="holiday_fetch_failed">祝日データが取得できません</string>
     <string name="credits_oss">クレジット / オープンソース</string>
     <string name="credits_holidays_jp">祝日データ: holidays-jp (MIT) — https://holidays-jp.github.io/</string>
+    <string name="credits_koyomi">六曜・祝日データ: 暦API https://koyomi.zingsystem.com/</string>
     <string name="back">戻る</string>
     <string name="on">オン</string>
     <string name="off">オフ</string>

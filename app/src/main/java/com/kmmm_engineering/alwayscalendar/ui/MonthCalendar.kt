@@ -36,6 +36,22 @@ import java.util.Locale
 import kotlin.math.max
 import kotlin.math.roundToInt
 
+/** Date-number size (fraction of the cell short side) when extra lines are shown. Tune on device. */
+internal const val DayNumberFillOneExtra = 0.65f
+internal const val DayNumberFillBothExtras = 0.50f
+/** Longest holiday name (勤労感謝の日 etc.) in characters; sets the shared name font size. */
+private const val HolidayNameMaxChars = 6
+/** Rokuyo text is the date colour at this alpha. */
+private const val RokuyoAlpha = 0.65f
+
+/** Rokuyo / holiday-name display for the center month only (null extras = plain). */
+data class DayExtras(
+    val showRokuyo: Boolean,
+    val showHolidayName: Boolean,
+    val rokuyoOf: (LocalDate) -> String?,
+    val holidayNameOf: (LocalDate) -> String?,
+)
+
 internal val ColorSunday = Color(0xFFFF5555)
 internal val ColorSaturday = Color(0xFF5599FF)
 internal val ColorWeekday = Color.White
@@ -123,6 +139,7 @@ fun MonthCalendar(
     today: LocalDate,
     isHoliday: (LocalDate) -> Boolean,
     colorOptions: DayColorOptions = DayColorOptions(),
+    extras: DayExtras? = null,
     modifier: Modifier = Modifier,
 ) {
     val labels = if (weekStart == WeekStart.SUNDAY) WeekdayLabelsSunStart else WeekdayLabelsMonStart
@@ -156,6 +173,7 @@ fun MonthCalendar(
                 today = today,
                 isHoliday = isHoliday,
                 colorOptions = colorOptions,
+                extras = extras,
             )
         }
     }
@@ -173,6 +191,7 @@ private fun MonthCalendarSquare(
     today: LocalDate,
     isHoliday: (LocalDate) -> Boolean,
     colorOptions: DayColorOptions,
+    extras: DayExtras?,
 ) {
     val headerH = side.part(RatioHeaderH)
     val weekdayH = side.part(RatioWeekdayH)
@@ -239,6 +258,8 @@ private fun MonthCalendarSquare(
                         colorOptions = colorOptions,
                         daySp = daySp,
                         cellShortSide = cellShort,
+                        cellWidth = colW,
+                        extras = extras,
                         modifier = Modifier.weight(RatioColW.toFloat()).fillMaxHeight(),
                     )
                 }
@@ -382,6 +403,8 @@ private fun DayCell(
     colorOptions: DayColorOptions,
     daySp: TextUnit,
     cellShortSide: Dp,
+    cellWidth: Dp,
+    extras: DayExtras?,
     modifier: Modifier = Modifier,
 ) {
     val date = cell.date
@@ -405,15 +428,63 @@ private fun DayCell(
     ) {
         if (date == null) return@Box
         val color = resolveDayNumeralColor(date, isHoliday(date), colorOptions)
-        Text(
-            text = date.dayOfMonth.toString(),
-            color = color,
-            fontSize = daySp,
-            fontWeight = if (isToday) FontWeight.Bold else FontWeight.Normal,
-            textAlign = TextAlign.Center,
-            maxLines = 1,
-            softWrap = false,
-        )
+        val showR = extras?.showRokuyo == true
+        val showH = extras?.showHolidayName == true
+        val weight = if (isToday) FontWeight.Bold else FontWeight.Normal
+        if (extras == null || (!showR && !showH)) {
+            Text(
+                text = date.dayOfMonth.toString(),
+                color = color,
+                fontSize = daySp,
+                fontWeight = weight,
+                textAlign = TextAlign.Center,
+                maxLines = 1,
+                softWrap = false,
+            )
+            return@Box
+        }
+        val density = LocalDensity.current
+        val numberFill = if (showR && showH) DayNumberFillBothExtras else DayNumberFillOneExtra
+        val numberSp = daySp * (numberFill / GlyphFill)
+        // Same size for every day: longest holiday name fits the cell width; rokuyo is 2 chars.
+        val nameSp = with(density) { (cellWidth * 0.95f / HolidayNameMaxChars).toSp() }
+        val rokuyoSp = with(density) {
+            minOf(cellWidth * 0.9f / 2f, cellWidth * 0.24f).toSp()
+        }
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(
+                text = date.dayOfMonth.toString(),
+                color = color,
+                fontSize = numberSp,
+                fontWeight = weight,
+                textAlign = TextAlign.Center,
+                maxLines = 1,
+                softWrap = false,
+                lineHeight = numberSp,
+            )
+            if (showR) {
+                Text(
+                    text = extras.rokuyoOf(date).orEmpty(),
+                    color = color.copy(alpha = RokuyoAlpha),
+                    fontSize = rokuyoSp,
+                    textAlign = TextAlign.Center,
+                    maxLines = 1,
+                    softWrap = false,
+                    lineHeight = rokuyoSp,
+                )
+            }
+            if (showH) {
+                Text(
+                    text = extras.holidayNameOf(date).orEmpty(),
+                    color = color,
+                    fontSize = nameSp,
+                    textAlign = TextAlign.Center,
+                    maxLines = 1,
+                    softWrap = false,
+                    lineHeight = nameSp,
+                )
+            }
+        }
     }
 }
 

@@ -67,15 +67,27 @@ class MainActivity : AppCompatActivity() {
             val network = networkState.value
 
             val holidayMap = holidays.holidays.collectAsStateWithLifecycle().value
-            val holidayDates = remember(holidayMap, settings.holidaysAsWhite) {
-                if (settings.holidaysAsWhite) emptySet() else holidayMap.keys
+            val koyomiMap = holidays.koyomi.days.collectAsStateWithLifecycle().value
+            val holidayDates = remember(holidayMap, koyomiMap, settings.holidaysAsWhite, settings.showRokuyo) {
+                if (settings.holidaysAsWhite) emptySet()
+                else mergeHolidayDates(holidayMap, koyomiMap, settings.showRokuyo)
+            }
+            // Name: holidays-jp first, Koyomi only for days holidays-jp lacks.
+            val holidayNames = remember(holidayMap, koyomiMap) {
+                val m = HashMap<String, String>()
+                koyomiMap.forEach { (k, v) -> if (v.holiday.isNotEmpty()) m[k] = v.holiday }
+                holidayMap.forEach { (k, v) -> if (v.isNotEmpty()) m[k] = v }
+                m as Map<String, String>
+            }
+            val rokuyoMap = remember(koyomiMap) {
+                koyomiMap.mapValues { it.value.rokuyou }
             }
 
-            LaunchedEffect(settings.holidaysAsWhite) {
+            LaunchedEffect(settings.holidaysAsWhite, settings.showRokuyo) {
                 if (settings.holidaysAsWhite) return@LaunchedEffect
                 holidays.loadCached()
                 val year = YearMonth.now().year
-                val ok = holidays.ensureYearsAround(year)
+                val ok = holidays.ensureYearsAround(year, settings.showRokuyo)
                 if (!ok) {
                     Toast.makeText(
                         this@MainActivity,
@@ -339,11 +351,13 @@ class MainActivity : AppCompatActivity() {
                             isCharging = battery.isCharging,
                             networkStatus = network,
                             holidayDates = holidayDates,
+                            holidayNames = holidayNames,
+                            rokuyoMap = rokuyoMap,
                             statusBarsVisibleCompat = statusBarsVisibleCompat,
                             statusBarsTransientShowing = statusBarsTransientShowing,
                             onEnsureMonth = { ym ->
                                 if (settings.holidaysAsWhite) true
-                                else holidays.ensureMonth(ym.year, ym.monthValue)
+                                else holidays.ensureMonth(ym.year, ym.monthValue, settings.showRokuyo)
                             },
                             onHolidayFetchFailed = {
                                 Toast.makeText(
@@ -400,4 +414,27 @@ class MainActivity : AppCompatActivity() {
             controller.show(WindowInsetsCompat.Type.systemBars())
         }
     }
+}
+
+/**
+ * Holiday judgement. Rokuyo ON: Koyomi is main, holidays-jp backs up years Koyomi lacks.
+ * Rokuyo OFF: holidays-jp is main, Koyomi only fills years holidays-jp lacks (fallback).
+ */
+private fun mergeHolidayDates(
+    jp: Map<String, String>,
+    koyomi: Map<String, com.kmmm_engineering.alwayscalendar.holiday.KoyomiDay>,
+    rokuyoOn: Boolean,
+): Set<String> {
+    val koyomiDates = koyomi.filter { it.value.holiday.isNotEmpty() }.keys
+    val koyomiYears = koyomi.keys.map { it.take(4) }.toSet()
+    val jpYears = jp.keys.map { it.take(4) }.toSet()
+    val out = HashSet<String>()
+    if (rokuyoOn) {
+        out.addAll(koyomiDates)
+        jp.keys.filterTo(out) { it.take(4) !in koyomiYears }
+    } else {
+        out.addAll(jp.keys)
+        koyomiDates.filterTo(out) { it.take(4) !in jpYears }
+    }
+    return out
 }

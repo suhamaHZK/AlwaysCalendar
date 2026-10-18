@@ -32,6 +32,10 @@ data class UserSettings(
     val holidaysAsWhite: Boolean = false,
     val saturdayAsWhite: Boolean = false,
     val sundayAsWhite: Boolean = false,
+    /** 六曜を表示 (中央の月のみ). */
+    val showRokuyo: Boolean = false,
+    /** 祝日名を表示 (中央の月のみ). */
+    val showHolidayName: Boolean = false,
     val customHolidays: List<CustomDayRule> = emptyList(),
     val customWeekdays: List<CustomDayRule> = emptyList(),
 ) {

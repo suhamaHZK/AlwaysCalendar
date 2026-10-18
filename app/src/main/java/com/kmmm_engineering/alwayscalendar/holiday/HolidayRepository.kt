@@ -24,6 +24,7 @@ class HolidayRepository(context: Context) {
     private val appContext = context.applicationContext
     private val cacheDir = File(appContext.filesDir, "holidays").also { it.mkdirs() }
     private val mutex = Mutex()
+    val koyomi = KoyomiRepository(context)
 
     /** date string "yyyy-MM-dd" → holiday name */
     private val _holidays = MutableStateFlow<Map<String, String>>(emptyMap())
@@ -45,21 +46,36 @@ class HolidayRepository(context: Context) {
      * Ensure prev/current/next year relative to [aroundYear] are loaded.
      * @return false if any required year could not be obtained (and was not cached).
      */
-    suspend fun ensureYearsAround(aroundYear: Int): Boolean = mutex.withLock {
+    suspend fun ensureYearsAround(aroundYear: Int, rokuyo: Boolean = false): Boolean = mutex.withLock {
         val years = listOf(aroundYear - 1, aroundYear, aroundYear + 1)
         var allOk = true
         for (y in years) {
-            if (!ensureYearLocked(y)) allOk = false
+            if (!ensureYearBoth(y, rokuyo)) allOk = false
         }
         rebuildMap()
         allOk
     }
 
     /** Ensure the year containing [year]/[month] is available (for scroll into uncached months). */
-    suspend fun ensureMonth(year: Int, month: Int): Boolean = mutex.withLock {
-        val ok = ensureYearLocked(year)
+    suspend fun ensureMonth(year: Int, month: Int, rokuyo: Boolean = false): Boolean = mutex.withLock {
+        val ok = ensureYearBoth(year, rokuyo)
         rebuildMap()
         ok
+    }
+
+    /**
+     * Rokuyo ON: Koyomi API is the main source (holidays-jp is still fetched: its names win).
+     * Rokuyo OFF: holidays-jp is main; Koyomi is only asked when holidays-jp failed.
+     * @return true if at least the main source (or its fallback) produced the year.
+     */
+    private suspend fun ensureYearBoth(year: Int, rokuyo: Boolean): Boolean {
+        return if (rokuyo) {
+            val k = koyomi.ensureYear(year)
+            val h = ensureYearLocked(year)
+            k || h
+        } else {
+            ensureYearLocked(year) || koyomi.ensureYear(year)
+        }
     }
 
     private suspend fun ensureYearLocked(year: Int): Boolean {
@@ -124,6 +140,7 @@ class HolidayRepository(context: Context) {
             val name = f.name.removeSuffix(".json")
             name.toIntOrNull()?.let { fetchedYears.add(it) }
         }
+        koyomi.loadCached()
         rebuildMap()
     }
 

@@ -129,6 +129,13 @@ private fun StatusBarScrim(
 
 private val MonthStripGap = 3.dp
 
+/** Landscape only: gap between prev/center/next months (≈2× portrait). */
+private const val MonthStripGapLandscapeCells = 0.75f
+
+/** Landscape gap = 0.75 × one date-cell width (center month side / 7). Scales with the screen. */
+private fun landscapeGap(centerSide: androidx.compose.ui.unit.Dp): androidx.compose.ui.unit.Dp =
+    centerSide / 7f * MonthStripGapLandscapeCells
+
 /** Near-fill factor for side months (was 0.96 — left visible slack). */
 private const val SideFillFactor = 0.99f
 
@@ -139,6 +146,8 @@ fun CalendarScreen(
     isCharging: Boolean,
     networkStatus: NetworkStatus,
     holidayDates: Set<String>,
+    holidayNames: Map<String, String> = emptyMap(),
+    rokuyoMap: Map<String, String> = emptyMap(),
     onEnsureMonth: suspend (YearMonth) -> Boolean,
     onHolidayFetchFailed: () -> Unit,
     onSingleTap: () -> Unit,
@@ -242,6 +251,18 @@ fun CalendarScreen(
 
     val isHoliday: (LocalDate) -> Boolean = remember(holidayDates) {
         { d -> holidayDates.contains("%04d-%02d-%02d".format(d.year, d.monthValue, d.dayOfMonth)) }
+    }
+
+    val dayExtras: DayExtras? = remember(
+        settings.showRokuyo, settings.showHolidayName, holidayNames, rokuyoMap,
+    ) {
+        if (!settings.showRokuyo && !settings.showHolidayName) null
+        else DayExtras(
+            showRokuyo = settings.showRokuyo,
+            showHolidayName = settings.showHolidayName,
+            rokuyoOf = { d -> rokuyoMap["%04d-%02d-%02d".format(d.year, d.monthValue, d.dayOfMonth)] },
+            holidayNameOf = { d -> holidayNames["%04d-%02d-%02d".format(d.year, d.monthValue, d.dayOfMonth)] },
+        )
     }
 
     fun commitScrollToNearest() {
@@ -405,6 +426,7 @@ fun CalendarScreen(
                     today = today,
                     isHoliday = isHoliday,
                     colorOptions = colorOptions,
+                    extras = dayExtras,
                     misoperationLock = settings.misoperationLock,
                     onSelectDelta = { animateToMonthDelta(it) },
                     onDoubleTapSettings = { showSlider = true },
@@ -420,6 +442,7 @@ fun CalendarScreen(
                     today = today,
                     isHoliday = isHoliday,
                     colorOptions = colorOptions,
+                    extras = dayExtras,
                     misoperationLock = settings.misoperationLock,
                     onSelectDelta = { animateToMonthDelta(it) },
                     onDoubleTapSettings = { showSlider = true },
@@ -604,7 +627,9 @@ fun CalendarScreen(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .windowInsetsPadding(usableWindowInsets(fullscreen))
-                    .padding(bottom = 48.dp),
+                    .padding(bottom = 48.dp)
+                    .background(Color.Black.copy(alpha = 0.8f), RoundedCornerShape(8.dp))
+                    .padding(horizontal = 12.dp, vertical = 6.dp),
             )
         }
 
@@ -639,6 +664,7 @@ private fun MonthStripPortrait(
     today: LocalDate,
     isHoliday: (LocalDate) -> Boolean,
     colorOptions: DayColorOptions,
+    extras: DayExtras?,
     misoperationLock: Boolean,
     onSelectDelta: (Long) -> Unit,
     onDoubleTapSettings: () -> Unit,
@@ -717,6 +743,7 @@ private fun MonthStripPortrait(
                         today = today,
                         isHoliday = isHoliday,
                         colorOptions = colorOptions,
+                        extras = if (index == 0) extras else null,
                         modifier = Modifier.width(baseW),
                     )
                 }
@@ -735,6 +762,7 @@ private fun MonthStripLandscape(
     today: LocalDate,
     isHoliday: (LocalDate) -> Boolean,
     colorOptions: DayColorOptions,
+    extras: DayExtras?,
     misoperationLock: Boolean,
     onSelectDelta: (Long) -> Unit,
     onDoubleTapSettings: () -> Unit,
@@ -748,7 +776,7 @@ private fun MonthStripLandscape(
         val baseW = maxHeight // month block is always square; side == usable height
         val sideW = baseW * sideScale
         val centerW = baseW * centerScale
-        val gap = MonthStripGap
+        val gap = landscapeGap(centerW)
         val packW = sideW * 2f + centerW + gap * 2f
         val originX = (maxWidth - packW) / 2f
         val stepPx = with(density) { ((sideW + gap + centerW) / 2f).toPx() }
@@ -811,6 +839,7 @@ private fun MonthStripLandscape(
                         today = today,
                         isHoliday = isHoliday,
                         colorOptions = colorOptions,
+                        extras = if (index == 0) extras else null,
                         modifier = Modifier.width(baseW),
                     )
                 }
@@ -897,7 +926,7 @@ private fun fitMonthScalesLandscape(
     }
 
     val remainEach = ((layoutW - centerSide) / 2f).coerceAtLeast(0.dp)
-    val sideBudget = (remainEach - MonthStripGap).coerceAtLeast(0.dp)
+    val sideBudget = (remainEach - landscapeGap(centerSide)).coerceAtLeast(0.dp)
     var sideScale = (sideBudget / fullBaseSide) * SideFillFactor
     sideScale = sideScale.coerceAtMost(centerScale).coerceAtLeast(0.01f)
     return centerScale to sideScale

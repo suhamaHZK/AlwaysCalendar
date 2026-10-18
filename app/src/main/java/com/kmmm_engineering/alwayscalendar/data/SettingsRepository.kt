@@ -33,6 +33,8 @@ class SettingsRepository(private val context: Context) {
         val holidaysAsWhite = booleanPreferencesKey("holidays_as_white")
         val saturdayAsWhite = booleanPreferencesKey("saturday_as_white")
         val sundayAsWhite = booleanPreferencesKey("sunday_as_white")
+        val showRokuyo = booleanPreferencesKey("show_rokuyo")
+        val showHolidayName = booleanPreferencesKey("show_holiday_name")
         val customHolidays = stringPreferencesKey("custom_holidays_json")
         val customWeekdays = stringPreferencesKey("custom_weekdays_json")
         // Legacy debug013/014/017 keys — intentionally unread (discard on migrate).
@@ -66,6 +68,8 @@ class SettingsRepository(private val context: Context) {
         holidaysAsWhite = prefs[Keys.holidaysAsWhite] ?: false,
         saturdayAsWhite = prefs[Keys.saturdayAsWhite] ?: false,
         sundayAsWhite = prefs[Keys.sundayAsWhite] ?: false,
+        showRokuyo = prefs[Keys.showRokuyo] ?: false,
+        showHolidayName = prefs[Keys.showHolidayName] ?: false,
         customHolidays = CustomDayRule.decodeList(prefs[Keys.customHolidays]),
         customWeekdays = CustomDayRule.decodeList(prefs[Keys.customWeekdays]),
     )
@@ -97,6 +101,8 @@ class SettingsRepository(private val context: Context) {
             prefs[Keys.holidaysAsWhite] = next.holidaysAsWhite
             prefs[Keys.saturdayAsWhite] = next.saturdayAsWhite
             prefs[Keys.sundayAsWhite] = next.sundayAsWhite
+            prefs[Keys.showRokuyo] = next.showRokuyo
+            prefs[Keys.showHolidayName] = next.showHolidayName
             prefs[Keys.customHolidays] = CustomDayRule.encodeList(next.customHolidays)
             prefs[Keys.customWeekdays] = CustomDayRule.encodeList(next.customWeekdays)
             // Drop legacy debug scrim keys if present (read-discard migration).
@@ -120,6 +126,8 @@ class SettingsRepository(private val context: Context) {
     suspend fun setHolidaysAsWhite(v: Boolean) = update { it.copy(holidaysAsWhite = v) }
     suspend fun setSaturdayAsWhite(v: Boolean) = update { it.copy(saturdayAsWhite = v) }
     suspend fun setSundayAsWhite(v: Boolean) = update { it.copy(sundayAsWhite = v) }
+    suspend fun setShowRokuyo(v: Boolean) = update { it.copy(showRokuyo = v) }
+    suspend fun setShowHolidayName(v: Boolean) = update { it.copy(showHolidayName = v) }
 
     suspend fun addCustomHoliday(rule: CustomDayRule) = update {
         it.copy(customHolidays = it.customHolidays + rule)

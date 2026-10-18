@@ -194,6 +194,17 @@ fun SettingsScreen(
                     )
 
                     SwitchRow(
+                        label = stringResource(R.string.show_rokuyo),
+                        checked = settings.showRokuyo,
+                        onCheckedChange = { v -> scope.launch { repository.setShowRokuyo(v) } },
+                    )
+                    SwitchRow(
+                        label = stringResource(R.string.show_holiday_name),
+                        checked = settings.showHolidayName,
+                        onCheckedChange = { v -> scope.launch { repository.setShowHolidayName(v) } },
+                    )
+
+                    SwitchRow(
                         label = stringResource(R.string.fullscreen_enabled),
                         checked = settings.fullscreenEnabled,
                         onCheckedChange = { v -> scope.launch { repository.setFullscreenEnabled(v) } },
@@ -277,6 +288,11 @@ fun SettingsScreen(
                     SectionTitle(stringResource(R.string.credits_oss))
                     Text(
                         text = stringResource(R.string.credits_holidays_jp),
+                        color = Color(0xFFAAAAAA),
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                    Text(
+                        text = stringResource(R.string.credits_koyomi),
                         color = Color(0xFFAAAAAA),
                         style = MaterialTheme.typography.bodySmall,
                     )
