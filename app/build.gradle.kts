@@ -14,8 +14,8 @@ android {
         applicationId = "com.kmmm_engineering.alwayscalendar"
         minSdk = 29
         targetSdk = 36
-        versionCode = 18
-        versionName = "0.9.1"
+        versionCode = 19
+        versionName = "0.9.2"
 
         // Sideload / debug: APP_DEBUG="001" → settings shows "0.9.0 debug001".
         // Store AAB: pass -PappDebug= (empty) so display is "ver.0.9.0".

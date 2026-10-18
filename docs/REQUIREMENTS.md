@@ -143,7 +143,12 @@
 - 「ダブルタップで設定画面を表示」ヒントの背景は角丸の黒（不透明度80%）。
 - 設定最下部のクレジットに新APIを追記。
 
-## 8. 技術・配布（未確定は質問リストへ）
+### 7c. 日付セル内の縦積み（0.9.2）
+
+- 端末フォントの行高さ差で祝日名が切れる問題への対応。数字・六曜・祝日名を**高さ固定の枠**（cellH比）に分け、各Textは `wrapContentHeight(unbounded=true)`・`includeFontPadding=false`・`LineHeightStyle(Center, Trim.Both)`。
+- フォントサイズ/cellH比: 両方オン=数字0.40・六曜0.22・祝日名0.17（枠 0.46/0.27/0.22）、片方オン=数字0.55・その行0.26（枠 0.62/0.32）。両方オフは従来（90%）。
+- 祝日名は `min(cellH×比, セル幅×0.95÷6)`、6文字超は `×6/文字数` で縮小。数字サイズもcellH比で決め、端末フォントに依存しない。
+（未確定は質問リストへ）
 
 - applicationId: `com.kmmm_engineering.alwayscalendar` / GitHub: `suhamaHZK/AlwaysCalendar`
 - minSdk 29 / targetSdk 36（確定）

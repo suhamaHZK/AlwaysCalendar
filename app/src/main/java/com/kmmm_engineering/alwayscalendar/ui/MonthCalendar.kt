@@ -7,6 +7,11 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.wrapContentHeight
+import androidx.compose.foundation.layout.wrapContentWidth
+import androidx.compose.ui.text.PlatformTextStyle
+import androidx.compose.ui.text.style.LineHeightStyle
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
@@ -444,47 +449,86 @@ private fun DayCell(
             return@Box
         }
         val density = LocalDensity.current
-        val numberFill = if (showR && showH) DayNumberFillBothExtras else DayNumberFillOneExtra
-        val numberSp = daySp * (numberFill / GlyphFill)
-        // Same size for every day: longest holiday name fits the cell width; rokuyo is 2 chars.
-        val nameSp = with(density) { (cellWidth * 0.95f / HolidayNameMaxChars).toSp() }
+        val both = showR && showH
+        val cellH = cellShortSide
+        // Font size / cellH ratios and fixed frame heights (fraction of cellH); sum of frames < 1.
+        val numberRatio = if (both) 0.40f else 0.55f
+        val numberFrame = if (both) 0.46f else 0.62f
+        val rokuyoRatio = if (both) 0.22f else 0.26f
+        val rokuyoFrame = if (both) 0.27f else 0.32f
+        val nameFrame = if (both) 0.22f else 0.32f
+        val nameRatio = if (both) 0.17f else 0.26f
+        val numberSp = with(density) { (cellH * numberRatio).toSp() }
         val rokuyoSp = with(density) {
-            minOf(cellWidth * 0.9f / 2f, cellWidth * 0.24f).toSp()
+            minOf(cellH * rokuyoRatio, cellWidth * 0.9f / 2f).toSp()
         }
+        // Same size for every day: longest holiday name fits the cell width; names longer
+        // than HolidayNameMaxChars shrink by 6/length so they still fit.
+        val nameText = extras.holidayNameOf(date).orEmpty()
+        val nameBase = minOf(cellH * nameRatio, cellWidth * 0.95f / HolidayNameMaxChars)
+        val nameDp = if (nameText.length > HolidayNameMaxChars) {
+            nameBase * (HolidayNameMaxChars.toFloat() / nameText.length)
+        } else {
+            nameBase
+        }
+        val nameSp = with(density) { nameDp.toSp() }
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(
+            FixedLine(
+                height = cellH * numberFrame,
                 text = date.dayOfMonth.toString(),
                 color = color,
                 fontSize = numberSp,
                 fontWeight = weight,
-                textAlign = TextAlign.Center,
-                maxLines = 1,
-                softWrap = false,
-                lineHeight = numberSp,
             )
             if (showR) {
-                Text(
+                FixedLine(
+                    height = cellH * rokuyoFrame,
                     text = extras.rokuyoOf(date).orEmpty(),
                     color = color.copy(alpha = RokuyoAlpha),
                     fontSize = rokuyoSp,
-                    textAlign = TextAlign.Center,
-                    maxLines = 1,
-                    softWrap = false,
-                    lineHeight = rokuyoSp,
                 )
             }
             if (showH) {
-                Text(
-                    text = extras.holidayNameOf(date).orEmpty(),
+                FixedLine(
+                    height = cellH * nameFrame,
+                    text = nameText,
                     color = color,
                     fontSize = nameSp,
-                    textAlign = TextAlign.Center,
-                    maxLines = 1,
-                    softWrap = false,
-                    lineHeight = nameSp,
                 )
             }
         }
+    }
+}
+
+/** One text line in a fixed-height frame; font metrics cannot change the layout height. */
+@Composable
+private fun FixedLine(
+    height: Dp,
+    text: String,
+    color: Color,
+    fontSize: TextUnit,
+    fontWeight: FontWeight = FontWeight.Normal,
+) {
+    Box(modifier = Modifier.height(height), contentAlignment = Alignment.Center) {
+        Text(
+            text = text,
+            color = color,
+            fontSize = fontSize,
+            fontWeight = fontWeight,
+            textAlign = TextAlign.Center,
+            maxLines = 1,
+            softWrap = false,
+            overflow = TextOverflow.Visible,
+            lineHeight = fontSize,
+            style = TextStyle(
+                platformStyle = PlatformTextStyle(includeFontPadding = false),
+                lineHeightStyle = LineHeightStyle(
+                    alignment = LineHeightStyle.Alignment.Center,
+                    trim = LineHeightStyle.Trim.Both,
+                ),
+            ),
+            modifier = Modifier.wrapContentHeight(unbounded = true).wrapContentWidth(unbounded = true),
+        )
     }
 }
 
