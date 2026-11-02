@@ -1,6 +1,17 @@
 package com.kmmm_engineering.alwayscalendar.ui
 
+import android.app.TimePickerDialog
+import android.content.Intent
+import android.net.Uri
+import android.os.Build
+import android.provider.Settings
 import android.widget.Toast
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.runtime.DisposableEffect
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import com.kmmm_engineering.alwayscalendar.notify.WeekdayNotifyScheduler
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
@@ -285,6 +296,8 @@ fun SettingsScreen(
                         scope.launch { repository.setDiscordCharge(v) }
                     }
 
+                    WeekdayNotifySection(settings = settings, repository = repository)
+
                     SectionTitle(stringResource(R.string.credits_oss))
                     Text(
                         text = stringResource(R.string.credits_holidays_jp),
@@ -412,6 +425,87 @@ private fun SwitchRow(
     ) {
         Text(label, color = Color.White, modifier = Modifier.weight(1f))
         Switch(checked = checked, onCheckedChange = onCheckedChange)
+    }
+}
+
+/** 平日通知 (直下 of the battery thresholds): 2 switches, own times, exact-alarm guide. */
+@Composable
+private fun WeekdayNotifySection(
+    settings: UserSettings,
+    repository: SettingsRepository,
+) {
+    val scope = rememberCoroutineScope()
+    val context = LocalContext.current
+    var canExact by remember { mutableStateOf(WeekdayNotifyScheduler.canScheduleExact(context)) }
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                canExact = WeekdayNotifyScheduler.canScheduleExact(context)
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    @Composable
+    fun timeButton(minutes: Int, enabled: Boolean, onPick: (Int) -> Unit) {
+        OutlinedButton(
+            onClick = {
+                TimePickerDialog(
+                    context,
+                    { _, h, m -> onPick(h * 60 + m) },
+                    minutes / 60,
+                    minutes % 60,
+                    true,
+                ).show()
+            },
+            enabled = enabled,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Text(stringResource(R.string.notify_time, minutes / 60, minutes % 60))
+        }
+    }
+
+    SwitchRow(
+        label = stringResource(R.string.notify_first_weekday),
+        checked = settings.notifyFirstWeekday,
+        onCheckedChange = { v -> scope.launch { repository.setNotifyFirstWeekday(v) } },
+    )
+    timeButton(settings.notifyFirstWeekdayMinutes, settings.notifyFirstWeekday) { v ->
+        scope.launch { repository.setNotifyFirstWeekdayMinutes(v) }
+    }
+    SwitchRow(
+        label = stringResource(R.string.notify_last_weekday),
+        checked = settings.notifyLastWeekday,
+        onCheckedChange = { v -> scope.launch { repository.setNotifyLastWeekday(v) } },
+    )
+    timeButton(settings.notifyLastWeekdayMinutes, settings.notifyLastWeekday) { v ->
+        scope.launch { repository.setNotifyLastWeekdayMinutes(v) }
+    }
+
+    val anyOn = settings.notifyFirstWeekday || settings.notifyLastWeekday
+    if (anyOn && !canExact && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+        Text(
+            text = stringResource(R.string.exact_alarm_needed),
+            color = Color(0xFFFFCC66),
+            style = MaterialTheme.typography.bodySmall,
+        )
+        Button(
+            onClick = {
+                runCatching {
+                    context.startActivity(
+                        Intent(
+                            Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM,
+                            Uri.parse("package:${context.packageName}"),
+                        ),
+                    )
+                }
+            },
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Text(stringResource(R.string.exact_alarm_open))
+        }
     }
 }
 

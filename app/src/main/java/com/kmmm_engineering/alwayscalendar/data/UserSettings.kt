@@ -38,6 +38,13 @@ data class UserSettings(
     val showHolidayName: Boolean = false,
     val customHolidays: List<CustomDayRule> = emptyList(),
     val customWeekdays: List<CustomDayRule> = emptyList(),
+    /** その月最初の平日を通知 (Discord). */
+    val notifyFirstWeekday: Boolean = false,
+    /** Minutes since 00:00 (device TZ). Default 9:00. */
+    val notifyFirstWeekdayMinutes: Int = NOTIFY_DEFAULT_MINUTES,
+    /** その月最後の平日を通知 (Discord). */
+    val notifyLastWeekday: Boolean = false,
+    val notifyLastWeekdayMinutes: Int = NOTIFY_DEFAULT_MINUTES,
 ) {
     companion object {
         /** Tap-to-brighten duration on the calendar screen (Always Calendar: 60s). */
@@ -49,5 +56,8 @@ data class UserSettings(
 
         /** Fixed status-bar scrim opacity (%). */
         const val SCRIM_OPACITY_PERCENT = 85
+
+        /** 平日通知の既定時刻 9:00 (minutes since midnight). */
+        const val NOTIFY_DEFAULT_MINUTES = 9 * 60
     }
 }

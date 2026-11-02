@@ -32,9 +32,10 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.kmmm_engineering.alwayscalendar.data.CustomDayRule
+import com.kmmm_engineering.alwayscalendar.data.DayColorOptions
+import com.kmmm_engineering.alwayscalendar.data.DayKind
+import com.kmmm_engineering.alwayscalendar.data.resolveDayKind
 import com.kmmm_engineering.alwayscalendar.data.WeekStart
-import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.YearMonth
 import java.util.Locale
@@ -66,35 +67,16 @@ private val WeekdayLabelsSunStart = listOf("日", "月", "火", "水", "木", "�
 private val WeekdayLabelsMonStart = listOf("月", "火", "水", "木", "金", "土", "日")
 
 /**
- * Day-color options from settings (priority applied inside [resolveDayNumeralColor]).
- */
-data class DayColorOptions(
-    val holidaysAsWhite: Boolean = false,
-    val saturdayAsWhite: Boolean = false,
-    val sundayAsWhite: Boolean = false,
-    val customHolidays: List<CustomDayRule> = emptyList(),
-    val customWeekdays: List<CustomDayRule> = emptyList(),
-)
-
-/**
- * Priority: custom weekday (白) ＞ custom holiday (赤) ＞ white-switches ＞ default
- * (祝日・日曜赤、土曜青、他白). When holidaysAsWhite, API/cache holidays ignored.
+ * Screen color from [resolveDayKind] (shared with the 平日通知 judgement).
  */
 fun resolveDayNumeralColor(
     date: LocalDate,
     isApiHoliday: Boolean,
     options: DayColorOptions,
-): Color {
-    if (options.customWeekdays.any { it.matches(date) }) return ColorWeekday
-    if (options.customHolidays.any { it.matches(date) }) return ColorSunday
-    val treatHoliday = !options.holidaysAsWhite && isApiHoliday
-    val dow = date.dayOfWeek
-    return when {
-        treatHoliday -> ColorSunday
-        dow == DayOfWeek.SUNDAY -> if (options.sundayAsWhite) ColorWeekday else ColorSunday
-        dow == DayOfWeek.SATURDAY -> if (options.saturdayAsWhite) ColorWeekday else ColorSaturday
-        else -> ColorWeekday
-    }
+): Color = when (resolveDayKind(date, isApiHoliday, options)) {
+    DayKind.WEEKDAY -> ColorWeekday
+    DayKind.SATURDAY -> ColorSaturday
+    DayKind.HOLIDAY -> ColorSunday
 }
 
 /**

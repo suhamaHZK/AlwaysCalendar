@@ -15,7 +15,7 @@ This document is the privacy policy for the Always Calendar Android app. The app
 
    **Rokuyo / holiday data (optional, v0.9.1)** — Only when you turn on "Show Rokuyo", or when the holidays-jp request fails (fallback), the app also sends HTTPS GET requests to `https://koyomi.zingsystem.com/api/` (Koyomi API, a public service). The request contains only the year and a start date (for example `targetyyyy=2026&targetmm=1&targetdd=1`); no account or personal data is sent. The host can see your IP address. The result is cached in the app's private storage. The service operator's own privacy policy applies to data it receives.
 
-3. **Optional Discord webhook** — If you enter a webhook URL, the app may HTTP POST a short text message (for example "Battery 80% (charging)" and the optional test message) to that URL when a battery threshold you configured is crossed, or when you press the test send button. The message contains the battery percentage and charging state only. The app does not run its own notification server. Leave the webhook empty to disable this. Discord's privacy policy applies to data Discord receives.
+3. **Optional Discord webhook** — If you enter a webhook URL, the app may HTTP POST a short text message (for example "Battery 80% (charging)" and the optional test message) to that URL when a battery threshold you configured is crossed, on the first/last weekday of the month if you turned on those notifications (for example "Today is the first weekday of November 2026 (11/2)"), or when you press the test send button. The message contains only the battery percentage and charging state, or the date. The app does not run its own notification server. Leave the webhook empty to disable this. Discord's privacy policy applies to data Discord receives.
 
 4. **Battery information** — The app reads the device battery level and charging state locally to display and to evaluate alert thresholds. This is not sent anywhere except in the optional Discord message above.
 
@@ -23,7 +23,7 @@ This document is the privacy policy for the Always Calendar Android app. The app
 
 6. **No accounts, ads, or analytics** — No account registration; no advertising SDKs; no analytics or tracking SDKs; no in-app purchases. The app does not collect your location, contacts, or identifiers.
 
-7. **Permissions** — `INTERNET` (holiday/rokuyo download and optional Discord webhook), `ACCESS_NETWORK_STATE` and `ACCESS_WIFI_STATE` (to detect connectivity). Other features work offline. Cleartext (HTTP) traffic is disabled.
+7. **Permissions** — `INTERNET` (holiday/rokuyo download and optional Discord webhook), `ACCESS_NETWORK_STATE` and `ACCESS_WIFI_STATE` (to detect connectivity), `RECEIVE_BOOT_COMPLETED` and `SCHEDULE_EXACT_ALARM` (to schedule the optional weekday notifications at the time you set). Other features work offline. Cleartext (HTTP) traffic is disabled.
 
 8. **Backup** — The app allows Android's standard backup (`allowBackup`), so your on-device settings (including a webhook URL, if set) may be included in your own Google/device backup according to your device settings. The developer cannot access them.
 
@@ -53,7 +53,7 @@ https://github.com/suhamaHZK/AlwaysCalendar/issues
 
    **六曜・祝日データ（任意・0.9.1）** — 「六曜を表示」をオンにしたとき、または holidays-jp への取得が失敗したとき（フォールバック）のみ、`https://koyomi.zingsystem.com/api/`（暦API・公開サービス）へも HTTPS GET を行います。送るのは年と開始日のみ（例: `targetyyyy=2026&targetmm=1&targetdd=1`）で、アカウント情報や個人情報は送りません。接続先には IP アドレスが見えます。取得結果はアプリ専用領域にキャッシュされます。接続先が受け取る情報には、そのサービス運営者のプライバシーポリシーが適用されます。
 
-3. **任意の Discord Webhook** — Webhook URL を入力した場合のみ、設定したバッテリーしきい値を跨いだとき、またはテスト送信ボタンを押したときに、その URL へ短いテキスト（例:「バッテリー 80%（充電中）」、テストメッセージ）を HTTP POST します。内容はバッテリー残量と充電状態のみです。独自の通知サーバーはありません。無効にするには Webhook を空にしてください。Discord が受け取る情報には Discord のプライバシーポリシーが適用されます。
+3. **任意の Discord Webhook** — Webhook URL を入力した場合のみ、設定したバッテリーしきい値を跨いだとき、「その月最初／最後の平日を通知」をオンにした場合はその日の指定時刻、またはテスト送信ボタンを押したときに、その URL へ短いテキスト（例:「バッテリー 80%（充電中）」「今日は2026年11月の最初の平日です（11/2）」、テストメッセージ）を HTTP POST します。内容はバッテリー残量と充電状態、または日付のみです。独自の通知サーバーはありません。無効にするには Webhook を空にしてください。Discord が受け取る情報には Discord のプライバシーポリシーが適用されます。
 
 4. **バッテリー情報** — 表示としきい値判定のため、端末のバッテリー残量・充電状態を端末内で読み取ります。上記の Discord 通知以外には送信しません。
 
@@ -61,7 +61,7 @@ https://github.com/suhamaHZK/AlwaysCalendar/issues
 
 6. **アカウント・広告・解析なし** — アカウント登録、広告 SDK、解析・トラッキング SDK、アプリ内課金はありません。位置情報、連絡先、広告 ID などは収集しません。
 
-7. **権限** — `INTERNET`（祝日・六曜取得と任意の Discord Webhook）、`ACCESS_NETWORK_STATE`／`ACCESS_WIFI_STATE`（接続状態の確認）。その他の機能はオフラインで動作します。HTTP（非暗号化）通信は無効です。
+7. **権限** — `INTERNET`（祝日・六曜取得と任意の Discord Webhook）、`ACCESS_NETWORK_STATE`／`ACCESS_WIFI_STATE`（接続状態の確認）、`RECEIVE_BOOT_COMPLETED`／`SCHEDULE_EXACT_ALARM`（任意の平日通知を指定時刻に送るための予約）。その他の機能はオフラインで動作します。HTTP（非暗号化）通信は無効です。
 
 8. **バックアップ** — アプリは Android 標準のバックアップ（`allowBackup`）を許可しているため、端末内の設定（設定済みなら Webhook URL を含む）が、端末の設定に従ってご自身の Google／端末のバックアップに含まれる場合があります。開発者はアクセスできません。
 

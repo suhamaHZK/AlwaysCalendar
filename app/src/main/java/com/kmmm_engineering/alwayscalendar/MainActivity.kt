@@ -31,6 +31,7 @@ import com.kmmm_engineering.alwayscalendar.battery.BatteryStatus
 import com.kmmm_engineering.alwayscalendar.data.LandscapeMode
 import com.kmmm_engineering.alwayscalendar.data.UserSettings
 import com.kmmm_engineering.alwayscalendar.discord.ThresholdAlertEvaluator
+import com.kmmm_engineering.alwayscalendar.holiday.mergeHolidayDates
 import com.kmmm_engineering.alwayscalendar.network.ConnectivityMonitor
 import com.kmmm_engineering.alwayscalendar.network.NetworkStatus
 import com.kmmm_engineering.alwayscalendar.ui.CalendarScreen
@@ -414,27 +415,4 @@ class MainActivity : AppCompatActivity() {
             controller.show(WindowInsetsCompat.Type.systemBars())
         }
     }
-}
-
-/**
- * Holiday judgement. Rokuyo ON: Koyomi is main, holidays-jp backs up years Koyomi lacks.
- * Rokuyo OFF: holidays-jp is main, Koyomi only fills years holidays-jp lacks (fallback).
- */
-private fun mergeHolidayDates(
-    jp: Map<String, String>,
-    koyomi: Map<String, com.kmmm_engineering.alwayscalendar.holiday.KoyomiDay>,
-    rokuyoOn: Boolean,
-): Set<String> {
-    val koyomiDates = koyomi.filter { it.value.holiday.isNotEmpty() }.keys
-    val koyomiYears = koyomi.keys.map { it.take(4) }.toSet()
-    val jpYears = jp.keys.map { it.take(4) }.toSet()
-    val out = HashSet<String>()
-    if (rokuyoOn) {
-        out.addAll(koyomiDates)
-        jp.keys.filterTo(out) { it.take(4) !in koyomiYears }
-    } else {
-        out.addAll(jp.keys)
-        koyomiDates.filterTo(out) { it.take(4) !in jpYears }
-    }
-    return out
 }

@@ -37,6 +37,13 @@ class SettingsRepository(private val context: Context) {
         val showHolidayName = booleanPreferencesKey("show_holiday_name")
         val customHolidays = stringPreferencesKey("custom_holidays_json")
         val customWeekdays = stringPreferencesKey("custom_weekdays_json")
+        val notifyFirstWeekday = booleanPreferencesKey("notify_first_weekday")
+        val notifyFirstWeekdayMinutes = intPreferencesKey("notify_first_weekday_minutes")
+        val notifyLastWeekday = booleanPreferencesKey("notify_last_weekday")
+        val notifyLastWeekdayMinutes = intPreferencesKey("notify_last_weekday_minutes")
+        // 平日通知: "yyyy-MM" of the month already sent (per kind) → no double send.
+        val notifyFirstSentMonth = stringPreferencesKey("notify_first_sent_month")
+        val notifyLastSentMonth = stringPreferencesKey("notify_last_sent_month")
         // Legacy debug013/014/017 keys — intentionally unread (discard on migrate).
         // debug_scrim_opacity / debug_scrim_blur / debug_scrim_always_show
         // Discord threshold-cross persistence
@@ -72,6 +79,12 @@ class SettingsRepository(private val context: Context) {
         showHolidayName = prefs[Keys.showHolidayName] ?: false,
         customHolidays = CustomDayRule.decodeList(prefs[Keys.customHolidays]),
         customWeekdays = CustomDayRule.decodeList(prefs[Keys.customWeekdays]),
+        notifyFirstWeekday = prefs[Keys.notifyFirstWeekday] ?: false,
+        notifyFirstWeekdayMinutes = (prefs[Keys.notifyFirstWeekdayMinutes]
+            ?: UserSettings.NOTIFY_DEFAULT_MINUTES).coerceIn(0, 24 * 60 - 1),
+        notifyLastWeekday = prefs[Keys.notifyLastWeekday] ?: false,
+        notifyLastWeekdayMinutes = (prefs[Keys.notifyLastWeekdayMinutes]
+            ?: UserSettings.NOTIFY_DEFAULT_MINUTES).coerceIn(0, 24 * 60 - 1),
     )
 
     val settingsFlow: Flow<UserSettings> = context.dataStore.data.map { prefs ->
@@ -105,6 +118,10 @@ class SettingsRepository(private val context: Context) {
             prefs[Keys.showHolidayName] = next.showHolidayName
             prefs[Keys.customHolidays] = CustomDayRule.encodeList(next.customHolidays)
             prefs[Keys.customWeekdays] = CustomDayRule.encodeList(next.customWeekdays)
+            prefs[Keys.notifyFirstWeekday] = next.notifyFirstWeekday
+            prefs[Keys.notifyFirstWeekdayMinutes] = next.notifyFirstWeekdayMinutes.coerceIn(0, 24 * 60 - 1)
+            prefs[Keys.notifyLastWeekday] = next.notifyLastWeekday
+            prefs[Keys.notifyLastWeekdayMinutes] = next.notifyLastWeekdayMinutes.coerceIn(0, 24 * 60 - 1)
             // Drop legacy debug scrim keys if present (read-discard migration).
             prefs.remove(booleanPreferencesKey("debug_scrim_always_show"))
             prefs.remove(intPreferencesKey("debug_scrim_opacity"))
@@ -128,6 +145,22 @@ class SettingsRepository(private val context: Context) {
     suspend fun setSundayAsWhite(v: Boolean) = update { it.copy(sundayAsWhite = v) }
     suspend fun setShowRokuyo(v: Boolean) = update { it.copy(showRokuyo = v) }
     suspend fun setShowHolidayName(v: Boolean) = update { it.copy(showHolidayName = v) }
+    suspend fun setNotifyFirstWeekday(v: Boolean) = update { it.copy(notifyFirstWeekday = v) }
+    suspend fun setNotifyFirstWeekdayMinutes(v: Int) = update { it.copy(notifyFirstWeekdayMinutes = v) }
+    suspend fun setNotifyLastWeekday(v: Boolean) = update { it.copy(notifyLastWeekday = v) }
+    suspend fun setNotifyLastWeekdayMinutes(v: Int) = update { it.copy(notifyLastWeekdayMinutes = v) }
+
+    /** "yyyy-MM" already notified for first (true) / last (false) weekday, or null. */
+    suspend fun weekdayNotifySentMonth(first: Boolean): String? {
+        val prefs = context.dataStore.data.first()
+        return prefs[if (first) Keys.notifyFirstSentMonth else Keys.notifyLastSentMonth]
+    }
+
+    suspend fun markWeekdayNotifySent(first: Boolean, yearMonth: String) {
+        context.dataStore.edit { prefs ->
+            prefs[if (first) Keys.notifyFirstSentMonth else Keys.notifyLastSentMonth] = yearMonth
+        }
+    }
 
     suspend fun addCustomHoliday(rule: CustomDayRule) = update {
         it.copy(customHolidays = it.customHolidays + rule)

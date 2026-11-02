@@ -91,6 +91,9 @@ class HolidayRepository(context: Context) {
 
     private fun yearFile(year: Int) = File(cacheDir, "$year.json")
 
+    /** True if either holidays-jp or Koyomi has [year] on disk (no network). */
+    fun hasYearData(year: Int): Boolean = yearFile(year).exists() || koyomi.hasYear(year)
+
     private suspend fun fetchYear(year: Int): Boolean = withContext(Dispatchers.IO) {
         try {
             val url = URL("https://holidays-jp.github.io/api/v1/$year/date.json")

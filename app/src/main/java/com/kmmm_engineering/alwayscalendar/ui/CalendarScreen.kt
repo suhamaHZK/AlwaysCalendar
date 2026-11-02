@@ -71,6 +71,7 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.kmmm_engineering.alwayscalendar.R
+import com.kmmm_engineering.alwayscalendar.data.DayColorOptions
 import com.kmmm_engineering.alwayscalendar.data.UserSettings
 import com.kmmm_engineering.alwayscalendar.data.WeekStart
 import com.kmmm_engineering.alwayscalendar.network.NetworkKind

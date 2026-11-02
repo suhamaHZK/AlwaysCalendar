@@ -52,6 +52,11 @@
     <string name="discord_discharge">Discord通知（放電中に下記まで減少したら通知）</string>
     <string name="discord_charge">Discord通知（充電中に下記まで回復したら通知）</string>
     <string name="discord_discharge_msg">バッテリー %1$d%%（放電中）</string>
+    <string name="notify_first_weekday">その月最初の平日を通知</string>
+    <string name="notify_last_weekday">その月最後の平日を通知</string>
+    <string name="notify_time">通知時刻 %1$d:%2$02d</string>
+    <string name="exact_alarm_needed">指定時刻ちょうどに通知するには「アラームとリマインダー」の許可が必要です。許可しない場合、通知が遅れることがあります。</string>
+    <string name="exact_alarm_open">アラームとリマインダーを許可</string>
     <string name="discord_charge_msg">バッテリー %1$d%%（充電中）</string>
     <string name="threshold_off">OFF</string>
     <string name="holiday_fetch_failed">祝日データが取得できません</string>
