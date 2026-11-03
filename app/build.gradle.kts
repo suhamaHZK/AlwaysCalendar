@@ -14,7 +14,7 @@ android {
         applicationId = "com.kmmm_engineering.alwayscalendar"
         minSdk = 29
         targetSdk = 36
-        versionCode = 20
+        versionCode = 21
         versionName = "1.0.0"
 
         // Sideload / debug: APP_DEBUG="001" → settings shows "0.9.0 debug001".
